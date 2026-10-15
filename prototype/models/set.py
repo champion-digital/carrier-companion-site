@@ -376,7 +376,7 @@ def save(arr, name, path):
     img.pixels.foreach_set(rgba.ravel())
     img.filepath_raw = path; img.file_format = 'JPEG'
     scene.render.image_settings.quality = 88
-    img.save(); print('SAVED', path)
+    img.save(quality=82); print('SAVED', path)
 
 # 1) ground: irradiance from sun + sky, normalised to open ground = 1
 img = bake_target(ground, 'ground_bake', *G_RES)
@@ -413,5 +413,5 @@ for m in setobj.data.materials:                             # drop bake nodes be
     for n in [n for n in m.node_tree.nodes if n.type == 'TEX_IMAGE']: m.node_tree.nodes.remove(n)
 flat.hide_render = False
 bpy.ops.object.select_all(action='DESELECT'); setobj.select_set(True); flat.select_set(True)
-bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, 'set.glb'), export_format='GLB', use_selection=True, export_yup=True)
+bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, 'set.glb'), export_format='GLB', use_selection=True, export_yup=True, export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=7, export_draco_position_quantization=14, export_draco_normal_quantization=10, export_draco_texcoord_quantization=14)
 print('EXPORTED set.glb')

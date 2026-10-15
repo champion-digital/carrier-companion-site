@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
@@ -11,6 +12,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 const $ = (id) => document.getElementById(id);
 const stage = $('tv-stage'), canvas = $('tv-canvas');
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// phones and tablets: lighter render path (resolution, shadows, MSAA, glass) and a portrait framing
+const lite = window.matchMedia('(max-width: 900px), (pointer: coarse)').matches;
+const narrow = window.matchMedia('(max-width: 900px)').matches;
 
 // ---------- palette ----------
 const COL = {
@@ -25,12 +29,15 @@ try {
 } catch (e) {
   $('tv-fallback').hidden = false; canvas.hidden = true; throw e;
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, lite ? 1.5 : 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.toneMappingExposure = 0.95;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.VSMShadowMap;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; // VSM speckled on some GPUs
+
+// models are Draco-compressed (see models/*.py); one loader shared by trucks and set
+const gltfLoader = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/'));
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(COL.bg);
@@ -62,7 +69,7 @@ scene.add(hemi);
 const key = new THREE.DirectionalLight(0xffffff, 1.6);
 key.position.set(-30, 45, -32);
 key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
+key.shadow.mapSize.set(lite ? 1024 : 2048, lite ? 1024 : 2048);
 Object.assign(key.shadow.camera, { left: -70, right: 70, top: 50, bottom: -50, near: 1, far: 180 });
 key.shadow.radius = 7; key.shadow.blurSamples = 20; key.shadow.bias = -0.0004;
 scene.add(key);
@@ -115,7 +122,9 @@ const M = {
   tire: clay(0xC3CBD5),
   navy: new THREE.MeshPhysicalMaterial({ color: COL.navy, roughness: 0.46, clearcoat: 0.25, clearcoatRoughness: 0.4, sheen: 0.2, sheenRoughness: 0.6, sheenColor: 0x9FB2E0 }),
   navyTire: clay(COL.navyTire),
-  glass: new THREE.MeshPhysicalMaterial({ color: 0xEEF8FF, transmission: 1, roughness: 0.2, thickness: 0.5, ior: 1.4, specularIntensity: 0.6 }),
+  glass: lite
+    ? new THREE.MeshPhysicalMaterial({ color: 0xE6F4FF, roughness: 0.25, transparent: true, opacity: 0.55, depthWrite: false })
+    : new THREE.MeshPhysicalMaterial({ color: 0xEEF8FF, transmission: 1, roughness: 0.2, thickness: 0.5, ior: 1.4, specularIntensity: 0.6 }),
   chrome: new THREE.MeshPhysicalMaterial({ color: 0xE3E8EE, roughness: 0.3, metalness: 0.7 }),
   navyGlass: new THREE.MeshPhysicalMaterial({ color: 0x1B2A40, roughness: 0.15, clearcoat: 0.6, clearcoatRoughness: 0.2 }),
   window: clay(0xC5CFDA),
@@ -310,8 +319,11 @@ function loadTex(name, flipY) {
   const t = texLoader.load(new URL('models/' + name, import.meta.url).href);
   t.flipY = flipY; t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; return t;
 }
-new GLTFLoader().load(new URL('models/set.glb', import.meta.url).href, (gltf) => {
-  const light = loadTex('set-light.jpg', false);   // sun + sky + bounce, normalised (open ground = 1), stored at 1/1.5
+gltfLoader.load(new URL('models/set.glb', import.meta.url).href, (gltf) => {
+  // show the set only once its baked light is in, otherwise it flashes black on slow connections
+  gltf.scene.visible = false;
+  const light = texLoader.load(new URL('models/set-light.jpg', import.meta.url).href, () => { gltf.scene.visible = true; });
+  light.flipY = false; light.colorSpace = THREE.NoColorSpace; light.anisotropy = 4;   // sun + sky + bounce, normalised (open ground = 1), stored at 1/1.5
   const baked = (hex) => new THREE.MeshBasicMaterial({ color: hex, lightMap: light, lightMapIntensity: Math.PI * 1.5, toneMapped: false });
   const map = { Porcelain: baked(0xEEF1F5), Shade: baked(0xDDE3EA), Window: baked(0xAEBFD1), Dock: baked(0xD5DCE4), DockGlow: M.dockGlow,
     Pad: baked(0xE4E9EF) };
@@ -389,7 +401,7 @@ function skin(src, navy) {
   });
   return g;
 }
-new GLTFLoader().load(new URL('models/trucks.glb', import.meta.url).href, (gltf) => {
+gltfLoader.load(new URL('models/trucks.glb', import.meta.url).href, (gltf) => {
   const lib = {}; gltf.scene.children.forEach(c => { lib[c.name] = c; });
   if (!lib.Tractor || !lib.Trailer || !lib.TrailerGlass) return;
   trucks.forEach(t => {
@@ -445,7 +457,7 @@ function stepTruck(t, dt) {
 
 // ---------- post ----------
 // MSAA render target: without it every thin edge (grilles, ribs, mirrors) shimmers as trucks move
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: lite ? 2 : 4 }));
 composer.addPass(new RenderPass(scene, camera));
 let gtao = null;
 try {
@@ -459,7 +471,7 @@ composer.addPass(new OutputPass());
 
 // ---------- camera rig ----------
 // home framing; ?cam=az,pol,dist,x,z overrides it for art-direction checks
-const HOME = { az: -0.45, pol: 0.72, dist: 60, x: -3, z: 4 };
+const HOME = narrow ? { az: -0.45, pol: 0.62, dist: 104, x: 0, z: 1 } : { az: -0.45, pol: 0.72, dist: 60, x: -3, z: 4 };
 const camParam = new URLSearchParams(location.search).get('cam');
 if (camParam) [HOME.az, HOME.pol, HOME.dist, HOME.x, HOME.z] = camParam.split(',').map(Number);
 const rig = {
@@ -467,7 +479,7 @@ const rig = {
   goal: { az: HOME.az, pol: HOME.pol, dist: HOME.dist, target: new THREE.Vector3(HOME.x, 0, HOME.z) }
 };
 if (!reduceMotion) { rig.pol = HOME.pol + 0.22; rig.dist = HOME.dist * 0.85; rig.az = HOME.az - 0.3; }
-let selected = -1, viewShift = 0;
+let selected = -1, viewShift = 0, viewShiftY = 0;
 
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
@@ -475,8 +487,6 @@ function resize() {
   if (gtao) gtao.setSize(w, h);
   camera.aspect = w / h;
   viewShift = w > 900 ? Math.round(w * 0.16) : 0;
-  if (viewShift) camera.setViewOffset(w, h, -viewShift, 0, w, h); else camera.clearViewOffset();
-  camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize); resize();
 
@@ -484,6 +494,11 @@ function applyCamera() {
   const sp = new THREE.Spherical(rig.dist, rig.pol, rig.az);
   camera.position.setFromSpherical(sp).add(rig.target);
   camera.lookAt(rig.target);
+  // desktop: scene sits right of the copy; phones: lift a tracked truck above the docked card
+  const w = stage.clientWidth, h = stage.clientHeight;
+  viewShiftY += ((narrow && selected >= 0 ? h * 0.22 : 0) - viewShiftY) * 0.1;
+  if (viewShift || viewShiftY > 0.5) camera.setViewOffset(w, h, -viewShift, viewShiftY, w, h); else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
   camera.updateMatrixWorld(); // keep projections (dots, card) in sync with this frame, not the last one
 }
 
@@ -527,7 +542,8 @@ function select(i) {
   $('tv-hint').classList.add('gone');
   list.querySelectorAll('li').forEach(li => li.classList.toggle('sel', +li.dataset.i === i));
   if (i < 0) { card.hidden = true; rig.goal.dist = HOME.dist; rig.goal.pol = HOME.pol; rig.goal.target.set(HOME.x, 0, HOME.z); return; }
-  card.hidden = false; rig.goal.dist = 24; rig.goal.pol = 0.92;
+  if (narrow) stage.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'end' });
+  card.hidden = false; rig.goal.dist = narrow ? 40 : 24; rig.goal.pol = 0.92;
   renderCard(trucks[i], true);
 }
 
@@ -567,7 +583,9 @@ function positionDots() {
     if (t.dotStatus !== t.status) { t.dot.style.setProperty('--c', STATUS_COL[t.status]); t.dotStatus = t.status; }
     t.dot.classList.toggle('sel', t.i === selected);
     proj.copy(t.tractor.position); proj.y += 2.1; proj.project(camera);
-    t.dot.style.transform = `translate(${(proj.x * 0.5 + 0.5) * w}px, ${(-proj.y * 0.5 + 0.5) * h}px)`;
+    const x = (proj.x * 0.5 + 0.5) * w, y = (-proj.y * 0.5 + 0.5) * h;
+    t.dot.style.visibility = proj.z < 1 && x > -8 && x < w + 8 && y > -8 && y < h + 8 ? '' : 'hidden'; // never float over the copy
+    t.dot.style.transform = `translate(${x}px, ${y}px)`;
   }
 }
 function positionCard() {

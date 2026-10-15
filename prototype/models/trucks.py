@@ -236,7 +236,7 @@ bpy.ops.object.select_all(action='DESELECT')
 for r in roots.values():
     r.select_set(True)
     for c in r.children: c.select_set(True)
-bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=True, export_apply=True, export_yup=True)
+bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=True, export_apply=True, export_yup=True, export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=7, export_draco_position_quantization=14, export_draco_normal_quantization=10, export_draco_texcoord_quantization=14)
 print('EXPORTED', OUT)
 
 # ---------- optional studio preview ----------
