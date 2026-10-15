@@ -1,0 +1,639 @@
+/* Tower View prototype · Carrier Companion
+   A live model-world scene: porcelain trucks on glowing routes, click to track. Demo data only. */
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const $ = (id) => document.getElementById(id);
+const stage = $('tv-stage'), canvas = $('tv-canvas');
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// phones and tablets: lighter render path (resolution, shadows, MSAA, glass) and a portrait framing
+const lite = window.matchMedia('(max-width: 900px), (pointer: coarse)').matches;
+const narrow = window.matchMedia('(max-width: 900px)').matches;
+
+// ---------- palette ----------
+const COL = {
+  bg: 0xEDF1F5, porcelain: 0xF1F4F7, porcelainShade: 0xE2E8EE, tire: 0xD6DCE4, navy: 0x232C5E, navyTire: 0x1A2433,
+  sky: 0x6ED6FF, glass: 0xE6F6FF, ok: '#22C55E', warn: '#F9AC24', alert: '#D22533'
+};
+
+// ---------- renderer ----------
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+} catch (e) {
+  $('tv-fallback').hidden = false; canvas.hidden = true; throw e;
+}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, lite ? 1.5 : 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 0.95;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; // VSM speckled on some GPUs
+
+// models are Draco-compressed (see models/*.py); one loader shared by trucks and set
+const gltfLoader = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/'));
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(COL.bg);
+scene.fog = new THREE.Fog(COL.bg, 190, 420);
+
+const camera = new THREE.PerspectiveCamera(22, 1, 1, 1000);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+// soft studio dome: bright overhead, cool horizon, one large softbox on the key side
+function studioEnv() {
+  const s = new THREE.Scene();
+  s.add(new THREE.Mesh(new THREE.SphereGeometry(50, 48, 24), new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `varying vec3 vP; void main(){
+      float h = vP.y; vec3 top = vec3(1.0, 1.0, 1.02), hor = vec3(0.84, 0.88, 0.95), bot = vec3(0.8, 0.83, 0.88);
+      gl_FragColor = vec4(h > 0.0 ? mix(hor, top, pow(h, 0.6)) : mix(hor, bot, pow(-h, 0.5)), 1.0); }`
+  })));
+  const box = new THREE.Mesh(new THREE.PlaneGeometry(34, 34), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 2.4, 2.4), side: THREE.DoubleSide }));
+  box.position.set(-30, 45, -32).normalize().multiplyScalar(40); box.lookAt(0, 0, 0); s.add(box);
+  return pmrem.fromScene(s, 0.02).texture;
+}
+scene.environment = studioEnv();
+scene.environmentIntensity = 0.8;
+
+// ---------- lights ----------
+const hemi = new THREE.HemisphereLight(0xffffff, 0xB7CDE2, 0.18);
+scene.add(hemi);
+const key = new THREE.DirectionalLight(0xffffff, 1.6);
+key.position.set(-30, 45, -32);
+key.castShadow = true;
+key.shadow.mapSize.set(lite ? 1024 : 2048, lite ? 1024 : 2048);
+Object.assign(key.shadow.camera, { left: -70, right: 70, top: 50, bottom: -50, near: 1, far: 180 });
+key.shadow.radius = 7; key.shadow.blurSamples = 20; key.shadow.bias = -0.0004;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xDDEFFF, 0.0);
+fill.position.set(40, 20, -30);
+scene.add(fill);
+
+// ---------- ground: unlit soft gradient + blue-tinted shadow catcher ----------
+function radialTexture(inner, outer) {
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const g = c.getContext('2d'); const gr = g.createRadialGradient(256, 256, 20, 256, 256, 256);
+  gr.addColorStop(0, inner); gr.addColorStop(1, outer); g.fillStyle = gr; g.fillRect(0, 0, 512, 512);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+// Opaque ground surfaces read the baked ground shadow directly (no see-through overlay to sort):
+// colour (optionally a radial fade) x shadow texture sampled by world xz over the bake area.
+const GROUND_BAKE = { cx: 2, cz: 0, w: 80, d: 60 };
+const groundShadow = { value: new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1) }; // white until the bake loads
+groundShadow.value.needsUpdate = true;
+function groundMat(inner, outer = inner, fade = 0) {
+  return new THREE.ShaderMaterial({
+    uniforms: { inner: { value: new THREE.Color(inner) }, outer: { value: new THREE.Color(outer) }, fade: { value: fade }, shadowMap: groundShadow,
+      rect: { value: new THREE.Vector4(GROUND_BAKE.cx, GROUND_BAKE.cz, GROUND_BAKE.w, GROUND_BAKE.d) } },
+    vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: `uniform vec3 inner, outer; uniform float fade; uniform sampler2D shadowMap; uniform vec4 rect; varying vec3 vW;
+      void main(){
+        vec3 col = fade > 0.0 ? mix(inner, outer, clamp((length(vW.xz) - 23.0) / fade, 0.0, 1.0)) : inner;
+        vec2 uv = vec2(0.5 + (vW.x - rect.x) / rect.z, 0.5 - (vW.z - rect.y) / rect.w);
+        vec3 sh = vec3(1.0);
+        if (uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0) sh = texture2D(shadowMap, uv).rgb;
+        gl_FragColor = vec4(col * sh, 1.0);
+        #include <colorspace_fragment>
+      }`
+  });
+}
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshBasicMaterial({ map: radialTexture('#FDFEFF', '#EDF1F5'), fog: true, toneMapped: false }));
+ground.rotation.x = -Math.PI / 2;
+const groundShaded = groundMat(0xFDFEFF, 0xEDF1F5, 277);
+scene.add(ground);
+const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.ShadowMaterial({ color: 0x24406E, opacity: 0.45 }));
+// sits above road + paint so truck shadows land on them
+shadowCatcher.rotation.x = -Math.PI / 2; shadowCatcher.position.y = 0.04; shadowCatcher.receiveShadow = true;
+scene.add(shadowCatcher);
+
+// ---------- materials ----------
+const clay = (color) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.62, specularIntensity: 0.4, sheen: 0.15, sheenRoughness: 0.7, sheenColor: 0xffffff });
+const M = {
+  porcelain: clay(COL.porcelain),
+  porcelainShade: clay(COL.porcelainShade),
+  tire: clay(0xC3CBD5),
+  navy: new THREE.MeshPhysicalMaterial({ color: COL.navy, roughness: 0.46, clearcoat: 0.25, clearcoatRoughness: 0.4, sheen: 0.2, sheenRoughness: 0.6, sheenColor: 0x9FB2E0 }),
+  navyTire: clay(COL.navyTire),
+  glass: lite
+    ? new THREE.MeshPhysicalMaterial({ color: 0xE6F4FF, roughness: 0.25, transparent: true, opacity: 0.55, depthWrite: false })
+    : new THREE.MeshPhysicalMaterial({ color: 0xEEF8FF, transmission: 1, roughness: 0.2, thickness: 0.5, ior: 1.4, specularIntensity: 0.6 }),
+  chrome: new THREE.MeshPhysicalMaterial({ color: 0xE3E8EE, roughness: 0.3, metalness: 0.7 }),
+  navyGlass: new THREE.MeshPhysicalMaterial({ color: 0x1B2A40, roughness: 0.15, clearcoat: 0.6, clearcoatRoughness: 0.2 }),
+  window: clay(0xC5CFDA),
+  dock: new THREE.MeshStandardMaterial({ color: 0xDCE3EA, roughness: 0.9 }),
+  dockGlow: new THREE.MeshStandardMaterial({ color: 0xBFEBFF, emissive: COL.sky, emissiveIntensity: 0.7, roughness: 0.4 }),
+  routeBody: new THREE.MeshStandardMaterial({ color: 0xD8F1FF, emissive: COL.sky, emissiveIntensity: 0.22, roughness: 0.35, transparent: true, opacity: 0.78 }),
+  routeCore: new THREE.MeshBasicMaterial({ color: new THREE.Color(COL.sky).multiplyScalar(1.6), transparent: true, opacity: 0.9 })
+};
+
+function shadowed(mesh) { mesh.castShadow = true; mesh.receiveShadow = true; return mesh; }
+const rbox = (w, h, d, r, mat) => shadowed(new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 3, r), mat));
+const cyl = (r, h, mat, seg = 20) => shadowed(new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), mat));
+
+// ---------- truck model (forward = +x, unit ≈ 1 m / 2.4) ----------
+function wheel(mat, x, z) {
+  const w = cyl(0.19, 0.15, mat, 22); w.rotation.x = Math.PI / 2; w.position.set(x, 0.19, z); return w;
+}
+function buildTractor(navy) {
+  const body = navy ? M.navy : M.porcelain, tireM = navy ? M.navyTire : M.tire;
+  const g = new THREE.Group();
+  const frame = rbox(2.25, 0.16, 0.56, 0.04, navy ? M.navy : M.porcelainShade); frame.position.set(0, 0.36, 0); g.add(frame);
+  const hood = rbox(0.86, 0.46, 0.66, 0.1, body); hood.position.set(0.72, 0.64, 0); g.add(hood);
+  const grille = rbox(0.06, 0.4, 0.5, 0.02, navy ? M.navy : M.porcelainShade); grille.position.set(1.16, 0.64, 0); g.add(grille);
+  const bumper = rbox(0.12, 0.12, 0.74, 0.04, body); bumper.position.set(1.19, 0.38, 0); g.add(bumper);
+  const cab = rbox(0.6, 0.7, 0.76, 0.1, body); cab.position.set(0.04, 0.88, 0); g.add(cab);
+  const glassFront = rbox(0.04, 0.26, 0.64, 0.02, M.porcelainShade); glassFront.position.set(0.35, 1.04, 0);
+  glassFront.material = navy ? new THREE.MeshStandardMaterial({ color: 0x24364E, roughness: 0.25 }) : M.porcelainShade; g.add(glassFront);
+  const sleeper = rbox(0.56, 0.78, 0.76, 0.1, body); sleeper.position.set(-0.52, 0.92, 0); g.add(sleeper);
+  for (const z of [-0.34, 0.34]) {
+    const s = cyl(0.035, 1.0, body, 12); s.position.set(-0.2, 1.3, z); g.add(s);
+    const t = cyl(0.13, 0.42, navy ? M.navy : M.porcelainShade, 18); t.rotation.z = Math.PI / 2; t.position.set(-0.05, 0.36, z * 1.1); g.add(t);
+    const m = rbox(0.06, 0.16, 0.04, 0.015, body); m.position.set(0.36, 1.06, z * 1.25); g.add(m);
+  }
+  g.add(wheel(tireM, 0.78, 0.32), wheel(tireM, 0.78, -0.32));
+  for (const x of [-0.5, -0.86]) g.add(wheel(tireM, x, 0.32), wheel(tireM, x, -0.32));
+  return g;
+}
+function buildTrailer(navy) {
+  const g = new THREE.Group();
+  const L = 3.5;
+  const box = rbox(L, 0.98, 0.78, 0.06, navy ? M.glass : M.porcelain);
+  box.position.set(-L / 2 + 0.25, 1.06, 0); g.add(box);
+  if (navy) {
+    box.castShadow = false;
+    const frame = rbox(L + 0.02, 0.06, 0.8, 0.02, M.porcelainShade); frame.position.set(-L / 2 + 0.25, 0.56, 0); g.add(frame);
+    for (let i = 0; i < 5; i++) for (const z of [-0.18, 0.18]) {
+      const c = rbox(0.5, 0.4, 0.3, 0.05, M.porcelain); c.position.set(-0.3 - i * 0.62, 0.81, z); g.add(c);
+    }
+  }
+  const legs = rbox(0.08, 0.4, 0.6, 0.02, M.porcelainShade); legs.position.set(-0.7, 0.36, 0); g.add(legs);
+  const tireM = navy ? M.navyTire : M.tire;
+  for (const x of [-L + 0.75, -L + 0.4]) g.add(wheel(tireM, x, 0.32), wheel(tireM, x, -0.32));
+  return g;
+}
+
+// ---------- routes ----------
+// Road: rounded rectangle, centre x ±20, z -1.5..9.5, corner radius 4, 2.6 wide.
+// Trucks keep to the right-hand lane, 0.65 inside the centre line (mirrors models/set.py).
+function roundedRect(x0, x1, z0, z1, r, step = 0.5) {
+  const pts = [], line = (ax, az, bx, bz) => { const n = Math.max(1, Math.round(Math.hypot(bx - ax, bz - az) / step)); for (let i = 0; i < n; i++) pts.push([ax + (bx - ax) * i / n, az + (bz - az) * i / n]); };
+  const arc = (cx, cz, a0) => { const n = Math.round(r * Math.PI / 2 / step); for (let i = 0; i < n; i++) { const a = a0 + (Math.PI / 2) * i / n; pts.push([cx + r * Math.cos(a), cz + r * Math.sin(a)]); } };
+  line(x0 + r, z0, x1 - r, z0); arc(x1 - r, z0 + r, -Math.PI / 2);
+  line(x1, z0 + r, x1, z1 - r); arc(x1 - r, z1 - r, 0);
+  line(x1 - r, z1, x0 + r, z1); arc(x0 + r, z1 - r, Math.PI / 2);
+  line(x0, z1 - r, x0, z0 + r); arc(x0 + r, z0 + r, Math.PI);
+  return pts;
+}
+const LANE = 0.65;
+const ROUTES = [roundedRect(-20 + LANE, 20 - LANE, -1.5 + LANE, 9.5 - LANE, 4 - LANE)]
+  .map(pts => new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 0, z)), true, 'centripetal', 0.5));
+
+const routeMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false,
+  uniforms: { time: { value: 0 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    uniform float time; varying vec2 vUv;
+    void main(){
+      float d = abs(vUv.y - 0.5) * 2.0;                       // 0 centre, 1 edge
+      float line = smoothstep(1.0, 0.55, d);
+      vec3 col = mix(vec3(0.43, 0.84, 1.0), vec3(0.85, 0.96, 1.0), smoothstep(0.5, 0.0, d));
+      gl_FragColor = vec4(col, line * 0.9);
+    }`
+});
+function ribbon(curve, width, y, mat) {
+  const N = 500, pos = [], uv = [], idx = [];
+  const up = new THREE.Vector3(0, 1, 0), L = curve.getLength();
+  for (let i = 0; i <= N; i++) {
+    const u = i / N, p = curve.getPointAt(u % 1), t = curve.getTangentAt(u % 1);
+    const n = new THREE.Vector3().crossVectors(up, t).normalize().multiplyScalar(width / 2);
+    pos.push(p.x + n.x, y, p.z + n.z, p.x - n.x, y, p.z - n.z);
+    uv.push(u * L, 0, u * L, 1);
+    if (i < N) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx); geo.computeVertexNormals();
+  return new THREE.Mesh(geo, mat);
+}
+ROUTES.forEach((c, i) => { const r = ribbon(c, 0.16, 0.045 + i * 0.01, routeMat); r.renderOrder = 1; scene.add(r); });
+
+// ---------- road contact shadow: a soft fall-off on the ground along the road edges ----------
+// (the road itself sits outside the light bake; paint casts nothing)
+const edgeMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  uniforms: { color: { value: new THREE.Color(0x24406E) }, strength: { value: 0.3 } },
+  vertexShader: 'attribute float fall; varying float vF; void main(){ vF = fall; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'uniform vec3 color; uniform float strength; varying float vF; void main(){ gl_FragColor = vec4(color, pow(1.0 - vF, 2.2) * strength); }'
+});
+function edgeShadow(runs, o0, o1) {
+  const pos = [], fall = [], idx = [];
+  for (const pts of runs) {
+    const base = pos.length / 3;
+    pts.forEach(([x, z], i) => {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+      const tx = b[0] - a[0], tz = b[1] - a[1], L = Math.hypot(tx, tz) || 1, nx = -tz / L, nz = tx / L;
+      pos.push(x + nx * o0, 0.021, z + nz * o0, x + nx * o1, 0.021, z + nz * o1); fall.push(0, 1);
+      if (i < pts.length - 1) { const k = base + i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+    });
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('fall', new THREE.Float32BufferAttribute(fall, 1)); g.setIndex(idx);
+  const m = new THREE.Mesh(g, edgeMat); m.renderOrder = -2; scene.add(m);
+}
+function splitRuns(pts, keep) {
+  const out = []; let cur = [];
+  const start = pts.findIndex(p => !keep(...p)); const order = start < 0 ? pts.concat([pts[0]]) : pts.slice(start).concat(pts.slice(0, start));
+  for (const p of order) { if (keep(...p)) cur.push(p); else if (cur.length) { out.push(cur); cur = []; } }
+  if (cur.length) out.push(cur);
+  return out;
+}
+{
+  const HALF = 1.3, W = 0.7, loop = roundedRect(-20, 20, -1.5, 9.5, 4, 0.25);
+  const open = (x, z) => !(Math.abs(z - 4) < 1.4 && Math.abs(x) > 19.5) && !(Math.abs(x) < 4.1 && z < -1);
+  edgeShadow(splitRuns(loop, open), -HALF, -HALF - W);                    // outer edge, gaps at the exits and the dock driveway
+  edgeShadow(splitRuns(loop, () => true), HALF, HALF + W);                // inner edge
+  for (const sx of [-1, 1]) {
+    const line = []; for (let x = 21.3; x <= 80; x += 0.5) line.push([sx * x, 4]);
+    if (sx < 0) line.reverse();
+    edgeShadow([line], HALF, HALF + W); edgeShadow([line], -HALF, -HALF - W);
+  }
+}
+
+// ---------- world: hub depot, parked trailers, building clusters, trees ----------
+const routeSamples = ROUTES.flatMap(c => c.getSpacedPoints(300));
+const clearOf = (x, z, r) => routeSamples.every(p => (p.x - x) ** 2 + (p.z - z) ** 2 > r * r);
+
+function addDepot() {
+  const g = new THREE.Group();
+  const b = rbox(4.2, 2.1, 11, 0.12, M.porcelain); b.position.set(0, 1.05, 0); g.add(b);
+  const roof = rbox(4.4, 0.18, 11.2, 0.06, M.porcelainShade); roof.position.set(0, 2.15, 0); g.add(roof);
+  for (let i = 0; i < 6; i++) {
+    const d = rbox(0.06, 1.1, 1.2, 0.02, i === 2 ? M.dockGlow : M.dock); d.position.set(2.11, 0.75, -4.2 + i * 1.7); g.add(d);
+  }
+  g.position.set(-30, 0, 1);
+  scene.add(g);
+  for (let i = 0; i < 5; i++) {
+    const t = buildTrailer(false); t.rotation.y = -Math.PI / 2; t.position.set(-34.2 + i * 1.25, 0, -9.5); scene.add(t);
+  }
+}
+
+function warehouse(x, z, rot, len, docks) {
+  const g = new THREE.Group();
+  const body = rbox(len, 1.9, 4.2, 0.14, M.porcelain); body.position.y = 0.95; g.add(body);
+  const roof = rbox(len + 0.2, 0.16, 4.4, 0.06, M.porcelainShade); roof.position.y = 1.98; g.add(roof);
+  for (let i = 0; i < docks; i++) {
+    const d = rbox(1.1, 1.05, 0.06, 0.02, M.dock); d.position.set(-len / 2 + 1.4 + i * ((len - 2.8) / Math.max(1, docks - 1)), 0.62, 2.11); g.add(d);
+  }
+  g.position.set(x, 0, z); g.rotation.y = rot; scene.add(g);
+}
+function office(x, z, w, d, h) { const b = rbox(w, h, d, 0.2, M.porcelain); b.position.set(x, h / 2, z); scene.add(b); }
+const coneGeo = new THREE.ConeGeometry(0.6, 1.8, 28);
+function grove(x, z, n, seedOffset = 0) {
+  for (let i = 0; i < n; i++) {
+    const a = i * 2.39996 + seedOffset, r = 0.9 * Math.sqrt(i + 0.5);
+    const px = x + Math.cos(a) * r * 1.4, pz = z + Math.sin(a) * r * 1.4;
+    if (!clearOf(px, pz, 2.2)) continue;
+    const s = 0.75 + ((i * 37) % 10) / 22;
+    const t = shadowed(new THREE.Mesh(coneGeo, M.porcelain)); t.scale.setScalar(s); t.position.set(px, 0.9 * s, pz); scene.add(t);
+  }
+}
+function buildProceduralSet() {
+  warehouse(0, -10.5, 0, 14, 6);                         // distribution centre, docks facing the route
+  office(12.5, -10.5, 3, 3, 2.6);
+  office(9, 4, 3, 3, 2.6);
+  grove(-14, -12, 5); grove(18, -13, 4, 1); grove(-6, 4, 3, 2); grove(27, 2, 4, 3);
+}
+
+// baked set: geometry + AO atlas + ground shadow texture, built by models/set.py
+const texLoader = new THREE.TextureLoader();
+function loadTex(name, flipY) {
+  const t = texLoader.load(new URL('models/' + name, import.meta.url).href);
+  t.flipY = flipY; t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; return t;
+}
+gltfLoader.load(new URL('models/set.glb', import.meta.url).href, (gltf) => {
+  // show the set only once its baked light is in, otherwise it flashes black on slow connections
+  gltf.scene.visible = false;
+  const light = texLoader.load(new URL('models/set-light.jpg', import.meta.url).href, () => { gltf.scene.visible = true; });
+  light.flipY = false; light.colorSpace = THREE.NoColorSpace; light.anisotropy = 4;   // sun + sky + bounce, normalised (open ground = 1), stored at 1/1.5
+  const baked = (hex) => new THREE.MeshBasicMaterial({ color: hex, lightMap: light, lightMapIntensity: Math.PI * 1.5, toneMapped: false });
+  const map = { Porcelain: baked(0xEEF1F5), Shade: baked(0xDDE3EA), Window: baked(0xAEBFD1), Dock: baked(0xD5DCE4), DockGlow: M.dockGlow,
+    Pad: baked(0xE4E9EF) };
+  // flat ground surfaces (road, paint, aprons): no bake, the shared ground-shadow layer sits on top of them
+  const flat = { Road: groundMat(0xD6DCE3), Pad: groundMat(0xE4E9EF), Paint: groundMat(0xF7F9FB) };
+  gltf.scene.traverse(m => {
+    if (!m.isMesh) return;
+    const n = m.material.name;
+    m.material = flat[n] && /Flat/.test(m.name + (m.parent ? m.parent.name : '')) ? flat[n] : map[n] || flat[n] || map.Porcelain;
+    m.castShadow = false; m.receiveShadow = true;
+  });
+  scene.add(gltf.scene);
+  texLoader.load(new URL('models/ground-shadow.jpg', import.meta.url).href, (t) => {
+    t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; groundShadow.value = t;
+    ground.material = groundShaded;
+  });
+}, undefined, () => buildProceduralSet());
+
+// ---------- fleet ----------
+const STATUS = { transit: ['In transit', COL.ok, '#E3F6EA', '#15803D'], idle: ['Idle', COL.warn, '#FEF3DC', '#B45309'], delivered: ['Delivered', '#6ED6FF', '#E1F5FF', '#0E79B2'], late: ['Running late', COL.alert, '#FBE5E7', '#B91C1C'] };
+const FLEET = [
+  { name: 'Asset 4', trip: 4417, driver: 'M. Bidamou', from: 'Salt Lake City, UT', to: 'North Platte, NE', route: 0, u: 0.55, navy: true },
+  { name: 'Asset 3', trip: 4416, driver: 'R. Alvarez', from: 'Atlanta, GA', to: 'Memphis, TN', route: 0, u: 0.8 },
+  { name: 'Asset 2', trip: 4418, driver: 'K. Nguyen', from: 'Evanston, WY', to: 'Rawlins, WY', route: 0, u: 0.05 },
+  { name: 'Asset 1', trip: 4419, driver: 'D. Brooks', from: 'Dallas, TX', to: 'Tulsa, OK', route: 0, u: 0.3 }
+];
+// geometry constants match prototype/models/trucks.glb (built by models/trucks.py)
+const KINGPIN = 0.98, TRAILER_AXLE = KINGPIN + 2.8, SPEED = 3.2; // world units / s
+
+const STATUS_COL = { transit: '#22C55E', delivered: '#6ED6FF', idle: '#F9AC24', late: '#D22533' };
+const pickables = [];
+
+const trucks = FLEET.map((f, i) => {
+  const tractor = buildTractor(!!f.navy), trailer = buildTrailer(!!f.navy);
+  scene.add(tractor, trailer);
+  const dot = document.createElement('button');
+  dot.className = 'tv-dot'; dot.type = 'button'; dot.setAttribute('aria-label', `Track ${f.name}`);
+  dot.addEventListener('click', () => select(i)); stage.appendChild(dot);
+  const curve = ROUTES[f.route], len = curve.getLength();
+  return { ...f, i, tractor, trailer, dot, dotStatus: '', curve, len, status: 'transit', dwell: 0, tripStart: f.u, progress: 0.35 + i * 0.08, note: '' };
+});
+
+function collectPickables() {
+  pickables.length = 0;
+  trucks.forEach(t => [t.tractor, t.trailer].forEach(o => o.traverse(m => { if (m.isMesh) { m.userData.truck = t.i; pickables.push(m); } })));
+}
+collectPickables();
+
+// soft contact shadow under each body: grounds the trucks the way a path tracer would
+const contactMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false,
+  uniforms: { color: { value: new THREE.Color(0x1C2E52) }, strength: { value: 0.42 } },
+  vertexShader: 'varying vec2 vP; uniform vec2 size; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform vec3 color; uniform float strength; varying vec2 vP; uniform vec2 size;
+    void main(){ vec2 q = abs(vP) - (size * 0.5 - 0.5); float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+      gl_FragColor = vec4(color, (1.0 - smoothstep(-0.3, 0.5, d)) * strength); }`
+});
+function contact(w, d, cx) {
+  const m = contactMat.clone(); m.uniforms.size = { value: new THREE.Vector2(w, d) };
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(w, d), m);
+  p.rotation.x = -Math.PI / 2; p.position.set(cx, 0.042, 0); p.renderOrder = 0; return p;
+}
+
+// swap the placeholder trucks for the modeled ones once loaded
+function skin(src, navy) {
+  const g = src.clone(true);
+  g.traverse(m => {
+    if (!m.isMesh) return;
+    const n = m.material.name;
+    m.material = n === 'Paint' ? (navy ? M.navy : M.porcelain)
+      : n === 'Trim' ? (navy ? M.chrome : M.porcelainShade)
+      : n === 'Window' ? (navy ? M.navyGlass : M.window)
+      : n === 'Tire' ? M.tire : n === 'Glass' ? M.glass : M.porcelain;
+    m.castShadow = n !== 'Glass'; m.receiveShadow = true;
+  });
+  return g;
+}
+gltfLoader.load(new URL('models/trucks.glb', import.meta.url).href, (gltf) => {
+  const lib = {}; gltf.scene.children.forEach(c => { lib[c.name] = c; });
+  if (!lib.Tractor || !lib.Trailer || !lib.TrailerGlass) return;
+  trucks.forEach(t => {
+    t.tractor.clear(); t.tractor.add(skin(lib.Tractor, !!t.navy), contact(3.0, 1.15, -0.07));
+    t.trailer.clear(); t.trailer.add(skin(t.navy ? lib.TrailerGlass : lib.Trailer, !!t.navy), contact(3.95, 1.15, -1.57));
+  });
+  collectPickables();
+});
+
+const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpK = new THREE.Vector3();
+function place(t) {
+  const u = ((t.u % 1) + 1) % 1;
+  t.curve.getPointAt(u, tmpA);
+  const tan = t.curve.getTangentAt(u);
+  const head = Math.atan2(-tan.z, tan.x);
+  t.tractor.position.copy(tmpA); t.tractor.rotation.y = head;
+  tmpK.set(-KINGPIN, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), head).add(tmpA);
+  const ub = (((u - TRAILER_AXLE / t.len) % 1) + 1) % 1;
+  t.curve.getPointAt(ub, tmpB);
+  const th = Math.atan2(-(tmpK.z - tmpB.z), tmpK.x - tmpB.x);
+  t.trailer.position.copy(tmpK); t.trailer.rotation.y = th;
+}
+trucks.forEach(place);
+
+// trip events: deliveries at fixed stops, occasional idle
+const STOPS = [[0.176, 0.676]];
+const FOLLOW_MIN = 7.2, FOLLOW_EASE = 5; // tractor-to-tractor gap (truck + trailer ≈ 5.7)
+function stepTruck(t, dt) {
+  if (t.dwell > 0) {
+    t.dwell -= dt;
+    if (t.dwell <= 0) {
+      if (t.status === 'delivered') { t.trip += 6; [t.from, t.to] = [t.to, t.from]; t.progress = 0; t.note = ''; }
+      t.status = 'transit';
+    }
+    return;
+  }
+  const prev = ((t.u % 1) + 1) % 1;
+  // car-following: ease off as the gap to the truck ahead closes, queue behind a stopped one
+  let gap = Infinity;
+  for (const o of trucks) if (o !== t && o.route === t.route) gap = Math.min(gap, ((((o.u - t.u) % 1) + 1) % 1) * t.len);
+  const v = SPEED * THREE.MathUtils.clamp((gap - FOLLOW_MIN) / FOLLOW_EASE, 0, 1);
+  t.u += (v * dt) / t.len;
+  t.progress = Math.min(1, t.progress + (v * dt) / (t.len * 0.5));
+  const cur = ((t.u % 1) + 1) % 1;
+  for (const s of STOPS[t.route]) {
+    if ((prev < s && cur >= s) || (prev > cur && (s > prev || s <= cur))) {
+      t.status = 'delivered'; t.dwell = 3.2; t.progress = 1; t.note = 'POD received. Invoice sent from the same record.';
+      return;
+    }
+  }
+  if (t.i !== 0 && Math.random() < dt * 0.012) { t.status = 'idle'; t.dwell = 4.5; t.note = 'Dispatcher notified.'; }
+}
+
+// ---------- post ----------
+// MSAA render target: without it every thin edge (grilles, ribs, mirrors) shimmers as trucks move
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: lite ? 2 : 4 }));
+composer.addPass(new RenderPass(scene, camera));
+let gtao = null;
+try {
+  gtao = new GTAOPass(scene, camera, 1, 1);
+  gtao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 12 });
+  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+  gtao.blendIntensity = 0.75;
+  // composer.addPass(gtao);  // off: baked GI covers the set, the studio dome covers the trucks
+} catch (e) { gtao = null; }
+composer.addPass(new OutputPass());
+
+// ---------- camera rig ----------
+// home framing; ?cam=az,pol,dist,x,z overrides it for art-direction checks
+const HOME = narrow ? { az: -0.45, pol: 0.62, dist: 104, x: 0, z: 1 } : { az: -0.45, pol: 0.72, dist: 60, x: -3, z: 4 };
+const camParam = new URLSearchParams(location.search).get('cam');
+if (camParam) [HOME.az, HOME.pol, HOME.dist, HOME.x, HOME.z] = camParam.split(',').map(Number);
+const rig = {
+  az: HOME.az, pol: HOME.pol, dist: HOME.dist, target: new THREE.Vector3(HOME.x, 0, HOME.z),
+  goal: { az: HOME.az, pol: HOME.pol, dist: HOME.dist, target: new THREE.Vector3(HOME.x, 0, HOME.z) }
+};
+if (!reduceMotion) { rig.pol = HOME.pol + 0.22; rig.dist = HOME.dist * 0.85; rig.az = HOME.az - 0.3; }
+let selected = -1, viewShift = 0, viewShiftY = 0;
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false); composer.setSize(w, h);
+  if (gtao) gtao.setSize(w, h);
+  camera.aspect = w / h;
+  viewShift = w > 900 ? Math.round(w * 0.16) : 0;
+}
+window.addEventListener('resize', resize); resize();
+
+function applyCamera() {
+  const sp = new THREE.Spherical(rig.dist, rig.pol, rig.az);
+  camera.position.setFromSpherical(sp).add(rig.target);
+  camera.lookAt(rig.target);
+  // desktop: scene sits right of the copy; phones: lift a tracked truck above the docked card
+  const w = stage.clientWidth, h = stage.clientHeight;
+  viewShiftY += ((narrow && selected >= 0 ? h * 0.22 : 0) - viewShiftY) * 0.1;
+  if (viewShift || viewShiftY > 0.5) camera.setViewOffset(w, h, -viewShift, viewShiftY, w, h); else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld(); // keep projections (dots, card) in sync with this frame, not the last one
+}
+
+// drag to orbit gently
+let drag = null;
+canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, az: rig.goal.az, pol: rig.goal.pol, moved: false }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', e => {
+  if (drag) {
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; canvas.classList.add('drag'); }
+    rig.goal.az = THREE.MathUtils.clamp(drag.az - dx * 0.004, -1.25, 0.05);
+    rig.goal.pol = THREE.MathUtils.clamp(drag.pol - dy * 0.003, 0.55, 1.15);
+  } else hover(e);
+});
+canvas.addEventListener('pointerup', e => {
+  canvas.classList.remove('drag');
+  if (drag && !drag.moved) pick(e);
+  drag = null;
+});
+
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function hit(e) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const h = ray.intersectObjects(pickables, false)[0];
+  return h ? h.object.userData.truck : -1;
+}
+function hover(e) { canvas.classList.toggle('hover', hit(e) >= 0); }
+function pick(e) { const i = hit(e); select(i); }
+
+// ---------- UI ----------
+const list = $('tv-asset-list'), card = $('tv-card');
+list.innerHTML = trucks.map(t => `<li data-i="${t.i}"><span class="dot"></span><span class="n">${t.name}</span><span class="s"></span></li>`).join('');
+list.addEventListener('click', e => { const li = e.target.closest('li'); if (li) select(+li.dataset.i); });
+$('tv-close').addEventListener('click', () => select(-1));
+window.addEventListener('keydown', e => { if (e.key === 'Escape') select(-1); });
+
+function select(i) {
+  selected = i;
+  $('tv-hint').classList.add('gone');
+  list.querySelectorAll('li').forEach(li => li.classList.toggle('sel', +li.dataset.i === i));
+  if (i < 0) { card.hidden = true; rig.goal.dist = HOME.dist; rig.goal.pol = HOME.pol; rig.goal.target.set(HOME.x, 0, HOME.z); return; }
+  if (narrow) stage.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'end' });
+  card.hidden = false; rig.goal.dist = narrow ? 40 : 24; rig.goal.pol = 0.92;
+  renderCard(trucks[i], true);
+}
+
+const TRIP_MINS = [190, 95, 140, 62]; // demo trip lengths per truck
+function fmtEta(t) {
+  if (t.status === 'delivered') return 'Arrived';
+  const mins = Math.max(4, Math.round((1 - t.progress) * TRIP_MINS[t.i]));
+  return mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
+}
+function renderCard(t) {
+  const [label, , bg, fg] = STATUS[t.status];
+  $('c-asset').textContent = t.name;
+  const pill = $('c-pill'); pill.textContent = t.status === 'idle' ? 'Idle · 12 min' : label; pill.style.background = bg; pill.style.color = fg;
+  $('c-trip').textContent = `Trip ${t.trip}`;
+  $('c-from').textContent = t.from; $('c-to').textContent = t.to;
+  $('c-bar').style.width = Math.round(t.progress * 100) + '%';
+  $('c-eta').textContent = fmtEta(t);
+  $('c-driver').textContent = t.driver;
+  $('c-rem').textContent = t.status === 'delivered' ? '0 mi' : Math.round((1 - t.progress) * TRIP_MINS[t.i] * 0.93) + ' mi';
+  $('c-speed').textContent = t.status === 'transit' ? (56 + (t.i * 3) % 9) + ' mph' : '0 mph';
+  $('c-note').textContent = t.note;
+}
+function renderList() {
+  $('tv-online').textContent = `${trucks.length} assets online`;
+  list.querySelectorAll('li').forEach(li => {
+    const t = trucks[+li.dataset.i]; const [label, col] = STATUS[t.status];
+    li.querySelector('.dot').style.background = col;
+    li.querySelector('.s').textContent = t.status === 'transit' ? `ETA ${fmtEta(t)}` : t.status === 'idle' ? 'Idle · 12 min' : `${label} · ${t.to.split(',')[0]}`;
+  });
+}
+
+const proj = new THREE.Vector3();
+let cardX = 0, cardY = 0;
+function positionDots() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  for (const t of trucks) {
+    if (t.dotStatus !== t.status) { t.dot.style.setProperty('--c', STATUS_COL[t.status]); t.dotStatus = t.status; }
+    t.dot.classList.toggle('sel', t.i === selected);
+    proj.copy(t.tractor.position); proj.y += 2.1; proj.project(camera);
+    const x = (proj.x * 0.5 + 0.5) * w, y = (-proj.y * 0.5 + 0.5) * h;
+    t.dot.style.visibility = proj.z < 1 && x > -8 && x < w + 8 && y > -8 && y < h + 8 ? '' : 'hidden'; // never float over the copy
+    t.dot.style.transform = `translate(${x}px, ${y}px)`;
+  }
+}
+function positionCard() {
+  if (selected < 0) return;
+  const t = trucks[selected];
+  const r = canvas.getBoundingClientRect(), host = stage.parentElement.getBoundingClientRect();
+  const cw = card.offsetWidth, ch = card.offsetHeight;
+  if (r.width <= 900) { // phones: dock the card at the bottom of the scene
+    card.style.transform = `translate(${(r.width - cw) / 2}px, ${r.top - host.top + r.height - ch - 16}px)`;
+    return;
+  }
+  proj.copy(t.tractor.position); proj.y += 2.4; proj.project(camera);
+  let x = (proj.x * 0.5 + 0.5) * r.width + 120, y = (-proj.y * 0.5 + 0.5) * r.height - 210;
+  if (x + cw > r.width - 20) x -= cw + 240;
+  x = THREE.MathUtils.clamp(x, 20, r.width - cw - 20); y = THREE.MathUtils.clamp(y, 20, r.height - ch - 20);
+  cardX += (x - cardX) * 0.18; cardY += (y - cardY) * 0.18;
+  card.style.transform = `translate(${cardX + (r.left - host.left)}px, ${cardY + (r.top - host.top)}px)`;
+}
+
+// ---------- loop ----------
+const clock = new THREE.Clock();
+let uiTimer = 0, visible = true;
+new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(stage);
+
+let simTime = 0;
+function frame(dt) {
+  simTime += dt;
+  if (!reduceMotion) for (const t of trucks) { stepTruck(t, dt); place(t); }
+
+  if (selected >= 0) rig.goal.target.lerp(trucks[selected].tractor.position, 0.12);
+  const k = 1 - Math.pow(0.0025, dt);
+  rig.az += (rig.goal.az - rig.az) * k; rig.pol += (rig.goal.pol - rig.pol) * k * 0.8;
+  rig.dist += (rig.goal.dist - rig.dist) * k * 0.8; rig.target.lerp(rig.goal.target, k);
+  applyCamera();
+
+  uiTimer += dt;
+  if (uiTimer > 0.25) { uiTimer = 0; renderList(); if (selected >= 0) renderCard(trucks[selected]); }
+  positionCard(); positionDots();
+  composer.render();
+}
+function tick() {
+  requestAnimationFrame(tick);
+  if (!visible) return;
+  frame(Math.min(clock.getDelta(), 0.05));
+}
+renderList();
+applyCamera();
+const qs = new URLSearchParams(location.search);
+if (qs.has('shot')) { for (let i = 0; i < 300; i++) frame(1 / 60); const sel = qs.get('shot'); if (sel !== 'default') { select(+sel); for (let i = 0; i < 200; i++) frame(1 / 60); } }
+tick();
+window.__tv = { rig, select, trucks, camera, gtao, M, key, hemi, scene, step: (n = 60, dt = 1 / 60) => { for (let i = 0; i < n; i++) frame(dt); } };
