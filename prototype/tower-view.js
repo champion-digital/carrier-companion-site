@@ -77,8 +77,30 @@ function radialTexture(inner, outer) {
   gr.addColorStop(0, inner); gr.addColorStop(1, outer); g.fillStyle = gr; g.fillRect(0, 0, 512, 512);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
+// Opaque ground surfaces read the baked ground shadow directly (no see-through overlay to sort):
+// colour (optionally a radial fade) x shadow texture sampled by world xz over the bake area.
+const GROUND_BAKE = { cx: 2, cz: 0, w: 80, d: 60 };
+const groundShadow = { value: new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1) }; // white until the bake loads
+groundShadow.value.needsUpdate = true;
+function groundMat(inner, outer = inner, fade = 0) {
+  return new THREE.ShaderMaterial({
+    uniforms: { inner: { value: new THREE.Color(inner) }, outer: { value: new THREE.Color(outer) }, fade: { value: fade }, shadowMap: groundShadow,
+      rect: { value: new THREE.Vector4(GROUND_BAKE.cx, GROUND_BAKE.cz, GROUND_BAKE.w, GROUND_BAKE.d) } },
+    vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: `uniform vec3 inner, outer; uniform float fade; uniform sampler2D shadowMap; uniform vec4 rect; varying vec3 vW;
+      void main(){
+        vec3 col = fade > 0.0 ? mix(inner, outer, clamp((length(vW.xz) - 23.0) / fade, 0.0, 1.0)) : inner;
+        vec2 uv = vec2(0.5 + (vW.x - rect.x) / rect.z, 0.5 - (vW.z - rect.y) / rect.w);
+        vec3 sh = vec3(1.0);
+        if (uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0) sh = texture2D(shadowMap, uv).rgb;
+        gl_FragColor = vec4(col * sh, 1.0);
+        #include <colorspace_fragment>
+      }`
+  });
+}
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshBasicMaterial({ map: radialTexture('#FDFEFF', '#EDF1F5'), fog: true, toneMapped: false }));
 ground.rotation.x = -Math.PI / 2;
+const groundShaded = groundMat(0xFDFEFF, 0xEDF1F5, 277);
 scene.add(ground);
 const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.ShadowMaterial({ color: 0x24406E, opacity: 0.45 }));
 // sits above road + paint so truck shadows land on them
@@ -210,7 +232,7 @@ function edgeShadow(runs, o0, o1) {
     pts.forEach(([x, z], i) => {
       const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
       const tx = b[0] - a[0], tz = b[1] - a[1], L = Math.hypot(tx, tz) || 1, nx = -tz / L, nz = tx / L;
-      pos.push(x + nx * o0, 0.012, z + nz * o0, x + nx * o1, 0.012, z + nz * o1); fall.push(0, 1);
+      pos.push(x + nx * o0, 0.021, z + nz * o0, x + nx * o1, 0.021, z + nz * o1); fall.push(0, 1);
       if (i < pts.length - 1) { const k = base + i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
     });
   }
@@ -283,7 +305,6 @@ function buildProceduralSet() {
 }
 
 // baked set: geometry + AO atlas + ground shadow texture, built by models/set.py
-const GROUND_BAKE = { cx: 2, cz: 0, w: 80, d: 60 };
 const texLoader = new THREE.TextureLoader();
 function loadTex(name, flipY) {
   const t = texLoader.load(new URL('models/' + name, import.meta.url).href);
@@ -295,8 +316,7 @@ new GLTFLoader().load(new URL('models/set.glb', import.meta.url).href, (gltf) =>
   const map = { Porcelain: baked(0xEEF1F5), Shade: baked(0xDDE3EA), Window: baked(0xAEBFD1), Dock: baked(0xD5DCE4), DockGlow: M.dockGlow,
     Pad: baked(0xE4E9EF) };
   // flat ground surfaces (road, paint, aprons): no bake, the shared ground-shadow layer sits on top of them
-  const flatMat = (hex) => new THREE.MeshBasicMaterial({ color: hex, toneMapped: false });
-  const flat = { Road: flatMat(0xD6DCE3), Pad: flatMat(0xE4E9EF), Paint: flatMat(0xF7F9FB) };
+  const flat = { Road: groundMat(0xD6DCE3), Pad: groundMat(0xE4E9EF), Paint: groundMat(0xF7F9FB) };
   gltf.scene.traverse(m => {
     if (!m.isMesh) return;
     const n = m.material.name;
@@ -304,11 +324,10 @@ new GLTFLoader().load(new URL('models/set.glb', import.meta.url).href, (gltf) =>
     m.castShadow = false; m.receiveShadow = true;
   });
   scene.add(gltf.scene);
-  const shade = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_BAKE.w, GROUND_BAKE.d), new THREE.MeshBasicMaterial({
-    map: loadTex('ground-shadow.jpg', true), blending: THREE.MultiplyBlending, transparent: true, premultipliedAlpha: true, depthWrite: false, toneMapped: false
-  }));
-  shade.rotation.x = -Math.PI / 2; shade.position.set(GROUND_BAKE.cx, 0.03, GROUND_BAKE.cz); // above road, paint and aprons shade.renderOrder = -1;
-  scene.add(shade);
+  texLoader.load(new URL('models/ground-shadow.jpg', import.meta.url).href, (t) => {
+    t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; groundShadow.value = t;
+    ground.material = groundShaded;
+  });
 }, undefined, () => buildProceduralSet());
 
 // ---------- fleet ----------
