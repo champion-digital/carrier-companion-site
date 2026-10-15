@@ -116,7 +116,7 @@ def office(x, z, w, d, h, rot=0.0):
     f = frame(x, z, rot); W, Dd = w / 2, d / 2
     fh = 0.7; n = max(1, int((h - 0.35) / fh)); top = 0.18 + n * fh
     box('Porcelain', -W, W, -Dd, Dd, 0, 0.2, 0.03, 2, f)                                  # plinth
-    box('Window', -W + 0.09, W - 0.09, -Dd + 0.09, Dd - 0.09, 0.18, top, 0, 0, f)          # glass volume
+    box('Window', -W + 0.09, W - 0.09, -Dd + 0.09, Dd - 0.09, 0.18, top - 0.16, 0, 0, f)   # glass volume (stops under the roof slab)
     for k in range(1, n + 1):
         zt = 0.18 + k * fh
         box('Porcelain', -W, W, -Dd, Dd, zt - 0.15, zt, 0.03, 2, f)                        # floor slabs
@@ -239,13 +239,13 @@ def roads():
     for sx in (-1, 1):                               # side exits running off-scene
         line = [(sx * (20 + i * 0.5), EXIT_Z) for i in range(0, 121)]
         if sx < 0: line = line[::-1]
-        strip(line, -RW / 2, RW / 2, 0, 0.029, 'Road', closed=False)
+        strip(line, -RW / 2, RW / 2, 0, 0.022, 'Road', closed=False)   # sits below the loop at the junction
         edge = [p for p in line if abs(p[0]) > 21.3]
         for o in (-1.12, 1.12):
-            strip(edge, o - 0.035, o + 0.035, 0.029, 0.035, 'Paint', closed=False)
-        dashes(edge, 0, 0.07, 0.029)
+            strip(edge, o - 0.035, o + 0.035, 0.022, 0.03, 'Paint', closed=False)
+        dashes(edge, 0, 0.07, 0.022)
     # dock driveway: from the loop's outer edge to the dock apron
-    box('Pad', -4.0, 4.0, -(RZ0 - RW / 2 + 0.05), -(-5.4), 0, 0.022, 0.01, 2)
+    box('Pad', -4.0, 4.0, -(RZ0 - RW / 2 + 0.05), -(-5.4), 0, 0.016, 0.01, 2)
 
 ROAD_PTS = rounded_rect(RX0, RX1, RZ0, RZ1, RR, 0.5) + [(x, EXIT_Z) for x in range(-60, -19)] + [(x, EXIT_Z) for x in range(20, 61)]
 def clear_of(x, z, r): return all((p[0]-x)**2 + (p[1]-z)**2 > r * r for p in ROAD_PTS)
@@ -328,15 +328,15 @@ bm = bmesh.new(); bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=400
 big.location = (0, 0, -0.002); big.data.materials.append(gm)
 
 world = bpy.data.worlds.new('Sky'); scene.world = world
-bg = world.node_tree.nodes['Background']; bg.inputs['Color'].default_value = (0.93, 0.96, 1.0, 1); bg.inputs['Strength'].default_value = 1.9
+bg = world.node_tree.nodes['Background']; bg.inputs['Color'].default_value = (0.93, 0.96, 1.0, 1); bg.inputs['Strength'].default_value = 2.4
 bpy.ops.object.light_add(type='SUN')
-sun = bpy.context.active_object; sun.data.energy = 4.6; sun.data.angle = math.radians(9)
+sun = bpy.context.active_object; sun.data.energy = 3.4; sun.data.angle = math.radians(20)   # large, soft source
 from mathutils import Vector
 d = Vector((-30, 32, 45)).normalized()                      # three.js key light position (-30, 45, -32)
 sun.rotation_euler = d.to_track_quat('Z', 'Y').to_euler()
 
 scene.render.engine = 'CYCLES'; scene.cycles.device = 'CPU'
-scene.cycles.samples = SAMPLES; scene.cycles.max_bounces = 3
+scene.cycles.samples = SAMPLES; scene.cycles.max_bounces = 5; scene.cycles.diffuse_bounces = 4
 scene.render.bake.margin = 6
 
 def bake_target(obj, name, w, h):
@@ -373,22 +373,26 @@ scene.render.bake.use_pass_direct = True; scene.render.bake.use_pass_indirect = 
 bpy.ops.object.bake(type='DIFFUSE')
 g = to_np(img)[..., :3].mean(axis=2)
 border = np.concatenate([g[:8].ravel(), g[-8:].ravel(), g[:, :8].ravel(), g[:, -8:].ravel()])
-ratio = np.clip(blur(g, 2) / np.median(border), 0.42, 1)
+G0 = float(np.median(border))                              # open, sunlit ground
+ratio = np.clip(blur(g, 3) / G0, 0.4, 1)
 hh, ww = ratio.shape                                       # fade to 1 at the edges
 yy, xx = np.mgrid[0:hh, 0:ww]
 edge = np.minimum.reduce([xx, ww - 1 - xx, yy, hh - 1 - yy]).astype(np.float32)
-ratio = 1 - (1 - ratio ** 1.8) * np.clip(edge / 60.0, 0, 1)
-tinted = np.stack([ratio ** 1.18, ratio ** 1.06, ratio ** 0.82], axis=2)   # cool, navy-leaning shadows
+ratio = 1 - (1 - ratio) * np.clip(edge / 60.0, 0, 1)
+tinted = np.stack([ratio ** 1.12, ratio ** 1.04, ratio ** 0.86], axis=2)   # cool, navy-leaning shadows
 save(tinted, 'ground_shadow', os.path.join(OUT, 'ground-shadow.jpg'))
 print('GROUND min', float(ratio.min()), 'median', float(np.median(ratio)))
 
-# 2) set: ambient occlusion atlas
-world.light_settings.distance = 1.6
-img = bake_target(setobj, 'set_ao', AO_RES, AO_RES)
-bpy.ops.object.bake(type='AO')
-ao = to_np(img)[..., :3].mean(axis=2)
-ao = 0.35 + 0.65 * ao                                       # keep it soft
-save(np.stack([ao] * 3, axis=2), 'set_ao', os.path.join(OUT, 'set-ao.jpg'))
+# 2) set: full lighting (sun + sky + bounce) baked into a lightmap atlas,
+#    normalised so open sunlit ground = 1 and stored at 1/LM_SCALE (tower-view.js multiplies back)
+LM_SCALE = 1.5
+scene.cycles.samples = SAMPLES * 8
+img = bake_target(setobj, 'set_light', AO_RES, AO_RES)
+bpy.ops.object.bake(type='DIFFUSE')
+lm = to_np(img)[..., :3] / G0
+lm = blur(lm, 2)                                            # light smoothing; island margins keep it from bleeding
+save(lm / LM_SCALE, 'set_light', os.path.join(OUT, 'set-light.jpg'))
+print('LIGHT p5/p50/p95', [float(np.percentile(lm[..., 1][lm[..., 1] > 0.01], q)) for q in (5, 50, 95)])
 
 # ---------- export set ----------
 for m in setobj.data.materials:                             # drop bake nodes before export

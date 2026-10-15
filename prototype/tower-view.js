@@ -44,20 +44,34 @@ scene.fog = new THREE.Fog(COL.bg, 190, 420);
 const camera = new THREE.PerspectiveCamera(22, 1, 1, 1000);
 
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = 0.32;
+// soft studio dome: bright overhead, cool horizon, one large softbox on the key side
+function studioEnv() {
+  const s = new THREE.Scene();
+  s.add(new THREE.Mesh(new THREE.SphereGeometry(50, 48, 24), new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `varying vec3 vP; void main(){
+      float h = vP.y; vec3 top = vec3(1.0, 1.0, 1.02), hor = vec3(0.84, 0.88, 0.95), bot = vec3(0.8, 0.83, 0.88);
+      gl_FragColor = vec4(h > 0.0 ? mix(hor, top, pow(h, 0.6)) : mix(hor, bot, pow(-h, 0.5)), 1.0); }`
+  })));
+  const box = new THREE.Mesh(new THREE.PlaneGeometry(34, 34), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 2.4, 2.4), side: THREE.DoubleSide }));
+  box.position.set(-30, 45, -32).normalize().multiplyScalar(40); box.lookAt(0, 0, 0); s.add(box);
+  return pmrem.fromScene(s, 0.02).texture;
+}
+scene.environment = studioEnv();
+scene.environmentIntensity = 0.95;
 
 // ---------- lights ----------
-const hemi = new THREE.HemisphereLight(0xffffff, 0xB7CDE2, 0.75);
+const hemi = new THREE.HemisphereLight(0xffffff, 0xB7CDE2, 0.18);
 scene.add(hemi);
-const key = new THREE.DirectionalLight(0xffffff, 1.65);
+const key = new THREE.DirectionalLight(0xffffff, 1.25);
 key.position.set(-30, 45, -32);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 Object.assign(key.shadow.camera, { left: -70, right: 70, top: 50, bottom: -50, near: 1, far: 180 });
-key.shadow.radius = 9; key.shadow.blurSamples = 16; key.shadow.bias = -0.0004;
+key.shadow.radius = 14; key.shadow.blurSamples = 24; key.shadow.bias = -0.0004;
 scene.add(key);
-const fill = new THREE.DirectionalLight(0xDDEFFF, 0.5);
+const fill = new THREE.DirectionalLight(0xDDEFFF, 0.0);
 fill.position.set(40, 20, -30);
 scene.add(fill);
 
@@ -71,21 +85,22 @@ function radialTexture(inner, outer) {
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshBasicMaterial({ map: radialTexture('#FDFEFF', '#EDF1F5'), fog: true, toneMapped: false }));
 ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
-const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.ShadowMaterial({ color: 0x1E4A78, opacity: 0.42 }));
-shadowCatcher.rotation.x = -Math.PI / 2; shadowCatcher.position.y = 0.01; shadowCatcher.receiveShadow = true;
+const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.ShadowMaterial({ color: 0x2A4A78, opacity: 0.3 }));
+shadowCatcher.rotation.x = -Math.PI / 2; shadowCatcher.position.y = 0.04; // above road + paint so truck shadows land on them shadowCatcher.receiveShadow = true;
 scene.add(shadowCatcher);
 
 // ---------- materials ----------
+const clay = (color) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.62, specularIntensity: 0.4, sheen: 0.35, sheenRoughness: 0.7, sheenColor: 0xffffff });
 const M = {
-  porcelain: new THREE.MeshPhysicalMaterial({ color: COL.porcelain, roughness: 0.6, clearcoat: 0.3, clearcoatRoughness: 0.5 }),
-  porcelainShade: new THREE.MeshPhysicalMaterial({ color: COL.porcelainShade, roughness: 0.66, clearcoat: 0.2, clearcoatRoughness: 0.55 }),
-  tire: new THREE.MeshStandardMaterial({ color: 0xBFC8D3, roughness: 0.85 }),
-  navy: new THREE.MeshPhysicalMaterial({ color: COL.navy, roughness: 0.38, metalness: 0.05, clearcoat: 0.7, clearcoatRoughness: 0.3 }),
-  navyTire: new THREE.MeshStandardMaterial({ color: COL.navyTire, roughness: 0.8 }),
-  glass: new THREE.MeshPhysicalMaterial({ color: 0xDDF2FF, roughness: 0.18, metalness: 0, transparent: true, opacity: 0.42, clearcoat: 1, clearcoatRoughness: 0.25, depthWrite: false, side: THREE.DoubleSide }),
-  chrome: new THREE.MeshPhysicalMaterial({ color: 0xDCE3EA, roughness: 0.28, metalness: 0.55, clearcoat: 0.4, clearcoatRoughness: 0.3 }),
-  navyGlass: new THREE.MeshPhysicalMaterial({ color: 0x1B2A40, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.1 }),
-  window: new THREE.MeshPhysicalMaterial({ color: 0xC9D2DC, roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.3 }),
+  porcelain: clay(COL.porcelain),
+  porcelainShade: clay(COL.porcelainShade),
+  tire: clay(0xC3CBD5),
+  navy: new THREE.MeshPhysicalMaterial({ color: COL.navy, roughness: 0.46, clearcoat: 0.25, clearcoatRoughness: 0.4, sheen: 0.2, sheenRoughness: 0.6, sheenColor: 0x9FB2E0 }),
+  navyTire: clay(COL.navyTire),
+  glass: new THREE.MeshPhysicalMaterial({ color: 0xEEF8FF, transmission: 1, roughness: 0.2, thickness: 0.5, ior: 1.4, specularIntensity: 0.6 }),
+  chrome: new THREE.MeshPhysicalMaterial({ color: 0xE3E8EE, roughness: 0.3, metalness: 0.7 }),
+  navyGlass: new THREE.MeshPhysicalMaterial({ color: 0x1B2A40, roughness: 0.15, clearcoat: 0.6, clearcoatRoughness: 0.2 }),
+  window: clay(0xC5CFDA),
   dock: new THREE.MeshStandardMaterial({ color: 0xDCE3EA, roughness: 0.9 }),
   dockGlow: new THREE.MeshStandardMaterial({ color: 0xBFEBFF, emissive: COL.sky, emissiveIntensity: 0.7, roughness: 0.4 }),
   routeBody: new THREE.MeshStandardMaterial({ color: 0xD8F1FF, emissive: COL.sky, emissiveIntensity: 0.22, roughness: 0.35, transparent: true, opacity: 0.78 }),
@@ -237,11 +252,10 @@ function loadTex(name, flipY) {
   t.flipY = flipY; t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; return t;
 }
 new GLTFLoader().load(new URL('models/set.glb', import.meta.url).href, (gltf) => {
-  const ao = loadTex('set-ao.jpg', false);
-  const withAo = (m) => { const c = m.clone(); c.aoMap = ao; c.aoMapIntensity = 1; return c; };
-  M.pad = new THREE.MeshPhysicalMaterial({ color: 0xE4E9EF, roughness: 0.9 });
-  const map = { Porcelain: withAo(M.porcelain), Shade: withAo(M.porcelainShade), Window: withAo(new THREE.MeshPhysicalMaterial({ color: 0xA7B9CC, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.15 })), Dock: withAo(M.dock), DockGlow: M.dockGlow, Pad: withAo(M.pad),
-    Road: withAo(new THREE.MeshPhysicalMaterial({ color: 0xD5DBE2, roughness: 0.92 })), Paint: withAo(new THREE.MeshPhysicalMaterial({ color: 0xFFFFFF, roughness: 0.6 })) };
+  const light = loadTex('set-light.jpg', false);   // sun + sky + bounce, normalised (open ground = 1), stored at 1/1.5
+  const baked = (hex) => new THREE.MeshBasicMaterial({ color: hex, lightMap: light, lightMapIntensity: Math.PI * 1.5, toneMapped: false });
+  const map = { Porcelain: baked(0xEEF1F5), Shade: baked(0xDDE3EA), Window: baked(0xAEBFD1), Dock: baked(0xD5DCE4), DockGlow: M.dockGlow,
+    Pad: baked(0xE4E9EF), Road: baked(0xD6DCE3), Paint: baked(0xFFFFFF) };
   gltf.scene.traverse(m => {
     if (!m.isMesh) return;
     m.material = map[m.material.name] || map.Porcelain;
@@ -326,6 +340,7 @@ trucks.forEach(place);
 
 // trip events: deliveries at fixed stops, occasional idle
 const STOPS = [[0.176, 0.676]];
+const FOLLOW_MIN = 7.2, FOLLOW_EASE = 5; // tractor-to-tractor gap (truck + trailer ≈ 5.7)
 function stepTruck(t, dt) {
   if (t.dwell > 0) {
     t.dwell -= dt;
@@ -336,8 +351,12 @@ function stepTruck(t, dt) {
     return;
   }
   const prev = ((t.u % 1) + 1) % 1;
-  t.u += (SPEED * dt) / t.len;
-  t.progress = Math.min(1, t.progress + (SPEED * dt) / (t.len * 0.5));
+  // car-following: ease off as the gap to the truck ahead closes, queue behind a stopped one
+  let gap = Infinity;
+  for (const o of trucks) if (o !== t && o.route === t.route) gap = Math.min(gap, ((((o.u - t.u) % 1) + 1) % 1) * t.len);
+  const v = SPEED * THREE.MathUtils.clamp((gap - FOLLOW_MIN) / FOLLOW_EASE, 0, 1);
+  t.u += (v * dt) / t.len;
+  t.progress = Math.min(1, t.progress + (v * dt) / (t.len * 0.5));
   const cur = ((t.u % 1) + 1) % 1;
   for (const s of STOPS[t.route]) {
     if ((prev < s && cur >= s) || (prev > cur && (s > prev || s <= cur))) {
@@ -358,7 +377,7 @@ try {
   gtao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 12 });
   gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
   gtao.blendIntensity = 0.75;
-  composer.addPass(gtao);
+  // composer.addPass(gtao);  // off: baked GI covers the set, the studio dome covers the trucks
 } catch (e) { gtao = null; }
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.28, 0.3, 0.95);
 const tiltH = new ShaderPass(HorizontalTiltShiftShader), tiltV = new ShaderPass(VerticalTiltShiftShader);
