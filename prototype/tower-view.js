@@ -195,6 +195,48 @@ function ribbon(curve, width, y, mat) {
 }
 ROUTES.forEach((c, i) => { const r = ribbon(c, 0.16, 0.045 + i * 0.01, routeMat); r.renderOrder = 1; scene.add(r); });
 
+// ---------- road contact shadow: a soft fall-off on the ground along the road edges ----------
+// (the road itself sits outside the light bake; paint casts nothing)
+const edgeMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  uniforms: { color: { value: new THREE.Color(0x24406E) }, strength: { value: 0.3 } },
+  vertexShader: 'attribute float fall; varying float vF; void main(){ vF = fall; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'uniform vec3 color; uniform float strength; varying float vF; void main(){ gl_FragColor = vec4(color, pow(1.0 - vF, 2.2) * strength); }'
+});
+function edgeShadow(runs, o0, o1) {
+  const pos = [], fall = [], idx = [];
+  for (const pts of runs) {
+    const base = pos.length / 3;
+    pts.forEach(([x, z], i) => {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+      const tx = b[0] - a[0], tz = b[1] - a[1], L = Math.hypot(tx, tz) || 1, nx = -tz / L, nz = tx / L;
+      pos.push(x + nx * o0, 0.012, z + nz * o0, x + nx * o1, 0.012, z + nz * o1); fall.push(0, 1);
+      if (i < pts.length - 1) { const k = base + i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+    });
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('fall', new THREE.Float32BufferAttribute(fall, 1)); g.setIndex(idx);
+  const m = new THREE.Mesh(g, edgeMat); m.renderOrder = -2; scene.add(m);
+}
+function splitRuns(pts, keep) {
+  const out = []; let cur = [];
+  const start = pts.findIndex(p => !keep(...p)); const order = start < 0 ? pts.concat([pts[0]]) : pts.slice(start).concat(pts.slice(0, start));
+  for (const p of order) { if (keep(...p)) cur.push(p); else if (cur.length) { out.push(cur); cur = []; } }
+  if (cur.length) out.push(cur);
+  return out;
+}
+{
+  const HALF = 1.3, W = 0.7, loop = roundedRect(-20, 20, -1.5, 9.5, 4, 0.25);
+  const open = (x, z) => !(Math.abs(z - 4) < 1.4 && Math.abs(x) > 19.5) && !(Math.abs(x) < 4.1 && z < -1);
+  edgeShadow(splitRuns(loop, open), -HALF, -HALF - W);                    // outer edge, gaps at the exits and the dock driveway
+  edgeShadow(splitRuns(loop, () => true), HALF, HALF + W);                // inner edge
+  for (const sx of [-1, 1]) {
+    const line = []; for (let x = 21.3; x <= 80; x += 0.5) line.push([sx * x, 4]);
+    if (sx < 0) line.reverse();
+    edgeShadow([line], HALF, HALF + W); edgeShadow([line], -HALF, -HALF - W);
+  }
+}
+
 // ---------- world: hub depot, parked trailers, building clusters, trees ----------
 const routeSamples = ROUTES.flatMap(c => c.getSpacedPoints(300));
 const clearOf = (x, z, r) => routeSamples.every(p => (p.x - x) ** 2 + (p.z - z) ** 2 > r * r);
