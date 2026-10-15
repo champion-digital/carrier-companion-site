@@ -8,6 +8,9 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { HorizontalTiltShiftShader } from 'three/addons/shaders/HorizontalTiltShiftShader.js';
+import { VerticalTiltShiftShader } from 'three/addons/shaders/VerticalTiltShiftShader.js';
 
 const $ = (id) => document.getElementById(id);
 const stage = $('tv-stage'), canvas = $('tv-canvas');
@@ -29,7 +32,7 @@ try {
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NeutralToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 0.95;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.VSMShadowMap;
 
@@ -39,10 +42,14 @@ scene.fog = new THREE.Fog(COL.bg, 190, 420);
 
 const camera = new THREE.PerspectiveCamera(22, 1, 1, 1000);
 
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.32;
+
 // ---------- lights ----------
-const hemi = new THREE.HemisphereLight(0xffffff, 0xC4D7E8, 1.55);
+const hemi = new THREE.HemisphereLight(0xffffff, 0xB7CDE2, 0.75);
 scene.add(hemi);
-const key = new THREE.DirectionalLight(0xffffff, 1.7);
+const key = new THREE.DirectionalLight(0xffffff, 1.65);
 key.position.set(-30, 60, 22);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
@@ -69,10 +76,10 @@ scene.add(shadowCatcher);
 
 // ---------- materials ----------
 const M = {
-  porcelain: new THREE.MeshStandardMaterial({ color: COL.porcelain, roughness: 0.82, metalness: 0 }),
-  porcelainShade: new THREE.MeshStandardMaterial({ color: COL.porcelainShade, roughness: 0.85 }),
-  tire: new THREE.MeshStandardMaterial({ color: COL.tire, roughness: 0.9 }),
-  navy: new THREE.MeshStandardMaterial({ color: COL.navy, roughness: 0.42, metalness: 0.15 }),
+  porcelain: new THREE.MeshPhysicalMaterial({ color: COL.porcelain, roughness: 0.6, clearcoat: 0.3, clearcoatRoughness: 0.5 }),
+  porcelainShade: new THREE.MeshPhysicalMaterial({ color: COL.porcelainShade, roughness: 0.66, clearcoat: 0.2, clearcoatRoughness: 0.55 }),
+  tire: new THREE.MeshStandardMaterial({ color: 0xCDD4DD, roughness: 0.85 }),
+  navy: new THREE.MeshPhysicalMaterial({ color: COL.navy, roughness: 0.38, metalness: 0.05, clearcoat: 0.7, clearcoatRoughness: 0.3 }),
   navyTire: new THREE.MeshStandardMaterial({ color: COL.navyTire, roughness: 0.8 }),
   glass: new THREE.MeshPhysicalMaterial({ color: 0xDDF2FF, roughness: 0.18, metalness: 0, transparent: true, opacity: 0.42, clearcoat: 1, clearcoatRoughness: 0.25, depthWrite: false, side: THREE.DoubleSide }),
   dock: new THREE.MeshStandardMaterial({ color: 0xDCE3EA, roughness: 0.9 }),
@@ -133,22 +140,40 @@ const ROUTES = [
   [[-23,4],[-16,13],[-4,19],[10,20],[20,16],[22,8],[14,2],[2,0],[-11,-1],[-19,0]]
 ].map(pts => new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 0, z)), true, 'centripetal', 0.5));
 
+const routeMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false,
+  uniforms: { time: { value: 0 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    uniform float time; varying vec2 vUv;
+    void main(){
+      float d = abs(vUv.y - 0.5) * 2.0;                       // 0 centre, 1 edge
+      float body = smoothstep(1.0, 0.78, d);                    // soft frosted edge
+      float rim = smoothstep(0.62, 0.88, d) * smoothstep(1.0, 0.9, d);
+      float core = exp(-pow(d / 0.09, 2.0));
+      float flow = 0.85 + 0.15 * sin(vUv.x * 0.35 - time * 1.6);
+      vec3 sky = vec3(0.155, 0.672, 1.0);
+      vec3 col = mix(vec3(0.74, 0.90, 1.0), vec3(1.0), rim * 0.7);
+      col += sky * core * 1.7 * flow;
+      gl_FragColor = vec4(col, body * 0.6 + core * 0.35);
+    }`
+});
 function ribbon(curve, width, y, mat) {
-  const N = 400, pos = [], idx = [];
-  const up = new THREE.Vector3(0, 1, 0);
+  const N = 500, pos = [], uv = [], idx = [];
+  const up = new THREE.Vector3(0, 1, 0), L = curve.getLength();
   for (let i = 0; i <= N; i++) {
     const u = i / N, p = curve.getPointAt(u % 1), t = curve.getTangentAt(u % 1);
     const n = new THREE.Vector3().crossVectors(up, t).normalize().multiplyScalar(width / 2);
     pos.push(p.x + n.x, y, p.z + n.z, p.x - n.x, y, p.z - n.z);
+    uv.push(u * L, 0, u * L, 1);
     if (i < N) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
   }
-  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx); geo.computeVertexNormals();
   return new THREE.Mesh(geo, mat);
 }
-for (const c of ROUTES) {
-  const body = ribbon(c, 1.5, 0.04, M.routeBody); body.receiveShadow = true; scene.add(body);
-  scene.add(ribbon(c, 0.12, 0.07, M.routeCore));
-}
+ROUTES.forEach((c, i) => { const r = ribbon(c, 1.7, 0.05 + i * 0.01, routeMat); r.renderOrder = 1; scene.add(r); });
 
 // ---------- world: hub depot, parked trailers, building clusters, trees ----------
 const routeSamples = ROUTES.flatMap(c => c.getSpacedPoints(300));
@@ -169,23 +194,34 @@ function addDepot() {
 }
 addDepot();
 
-let seed = 7;
-const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-function cluster(cx, cz, n, spread) {
+function warehouse(x, z, rot, len, docks) {
+  const g = new THREE.Group();
+  const body = rbox(len, 1.9, 4.2, 0.14, M.porcelain); body.position.y = 0.95; g.add(body);
+  const roof = rbox(len + 0.2, 0.16, 4.4, 0.06, M.porcelainShade); roof.position.y = 1.98; g.add(roof);
+  for (let i = 0; i < docks; i++) {
+    const d = rbox(1.1, 1.05, 0.06, 0.02, M.dock); d.position.set(-len / 2 + 1.4 + i * ((len - 2.8) / Math.max(1, docks - 1)), 0.62, 2.11); g.add(d);
+  }
+  g.position.set(x, 0, z); g.rotation.y = rot; scene.add(g);
+}
+function office(x, z, w, d, h) { const b = rbox(w, h, d, 0.2, M.porcelain); b.position.set(x, h / 2, z); scene.add(b); }
+const coneGeo = new THREE.ConeGeometry(0.6, 1.8, 28);
+function grove(x, z, n, seedOffset = 0) {
   for (let i = 0; i < n; i++) {
-    const x = cx + (rnd() - 0.5) * spread, z = cz + (rnd() - 0.5) * spread;
-    const w = 2.2 + rnd() * 3.2, d = 2.2 + rnd() * 3.2, h = 1.2 + rnd() * 3.8;
-    if (!clearOf(x, z, Math.max(w, d) / 2 + 1.6)) continue;
-    const b = rbox(w, h, d, 0.18, rnd() > 0.7 ? M.porcelainShade : M.porcelain); b.position.set(x, h / 2, z); scene.add(b);
+    const a = i * 2.39996 + seedOffset, r = 0.9 * Math.sqrt(i + 0.5);
+    const px = x + Math.cos(a) * r * 1.4, pz = z + Math.sin(a) * r * 1.4;
+    if (!clearOf(px, pz, 2.2)) continue;
+    const s = 0.75 + ((i * 37) % 10) / 22;
+    const t = shadowed(new THREE.Mesh(coneGeo, M.porcelain)); t.scale.setScalar(s); t.position.set(px, 0.9 * s, pz); scene.add(t);
   }
 }
-cluster(8, -23, 9, 12); cluster(38, 6, 8, 9); cluster(6, 27, 9, 12); cluster(-8, -24, 5, 8); cluster(30, -20, 6, 9); cluster(30, 22, 5, 8); cluster(4, 9, 4, 6);
-const coneGeo = new THREE.ConeGeometry(0.55, 1.6, 18);
-for (let i = 0; i < 70; i++) {
-  const x = -50 + rnd() * 100, z = -34 + rnd() * 68;
-  if (!clearOf(x, z, 2.4) || Math.abs(x + 30) < 5 && Math.abs(z) < 8) continue;
-  const s = 0.7 + rnd() * 0.8; const t = shadowed(new THREE.Mesh(coneGeo, M.porcelain)); t.scale.setScalar(s); t.position.set(x, 0.8 * s, z); scene.add(t);
-}
+office(-30, 10.5, 3.2, 3.2, 3.4);                     // hub office
+warehouse(6, -23.5, 0, 12, 5);                         // north distribution centre, docks facing the route
+office(17, -24, 3, 3, 2.6);
+warehouse(40.5, 2, -Math.PI / 2, 10, 4);               // east depot
+office(41, 12, 2.6, 2.6, 3.8);
+warehouse(5, 27.5, Math.PI, 12, 5);                    // south distribution centre
+office(10, -6, 2.6, 2.6, 2.2); office(13.5, -6.5, 2, 2, 3.2); // inner block
+grove(-14, -21, 5); grove(25, -23, 4, 1); grove(29, 24, 5, 2); grove(-19, 22, 4, 3); grove(45, -12, 4, 4); grove(-38, -4, 3, 5);
 
 // ---------- fleet ----------
 const STATUS = { transit: ['In transit', COL.ok, '#E3F6EA', '#15803D'], idle: ['Idle', COL.warn, '#FEF3DC', '#B45309'], delivered: ['Delivered', '#6ED6FF', '#E1F5FF', '#0E79B2'], late: ['Running late', COL.alert, '#FBE5E7', '#B91C1C'] };
@@ -282,6 +318,8 @@ try {
 } catch (e) { gtao = null; }
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.28, 0.3, 0.95);
 composer.addPass(bloom);
+const tiltH = new ShaderPass(HorizontalTiltShiftShader), tiltV = new ShaderPass(VerticalTiltShiftShader);
+composer.addPass(tiltH); composer.addPass(tiltV);
 composer.addPass(new OutputPass());
 const grain = new ShaderPass({
   uniforms: { tDiffuse: { value: null }, time: { value: 0 }, amount: { value: 0.022 } },
@@ -302,6 +340,7 @@ function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   renderer.setSize(w, h, false); composer.setSize(w, h);
   if (gtao) gtao.setSize(w, h);
+  tiltH.uniforms.h.value = 1.1 / w; tiltV.uniforms.v.value = 1.1 / h;
   camera.aspect = w / h;
   viewShift = w > 900 ? Math.round(w * 0.16) : 0;
   if (viewShift) camera.setViewOffset(w, h, -viewShift, 0, w, h); else camera.clearViewOffset();
@@ -432,6 +471,10 @@ function frame(dt) {
   if (uiTimer > 0.25) { uiTimer = 0; renderList(); if (selected >= 0) renderCard(trucks[selected]); }
   positionCard();
   grain.uniforms.time.value = simTime % 100;
+  routeMat.uniforms.time.value = simTime;
+  let focus = 0.46;
+  if (selected >= 0) { proj.copy(trucks[selected].tractor.position).project(camera); focus = THREE.MathUtils.clamp(proj.y * 0.5 + 0.5, 0.15, 0.85); }
+  tiltH.uniforms.r.value += (focus - tiltH.uniforms.r.value) * 0.1; tiltV.uniforms.r.value = tiltH.uniforms.r.value;
   composer.render();
 }
 function tick() {
