@@ -2,6 +2,7 @@
    A live model-world scene: porcelain trucks on glowing routes, click to track. Demo data only. */
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
@@ -78,10 +79,13 @@ scene.add(shadowCatcher);
 const M = {
   porcelain: new THREE.MeshPhysicalMaterial({ color: COL.porcelain, roughness: 0.6, clearcoat: 0.3, clearcoatRoughness: 0.5 }),
   porcelainShade: new THREE.MeshPhysicalMaterial({ color: COL.porcelainShade, roughness: 0.66, clearcoat: 0.2, clearcoatRoughness: 0.55 }),
-  tire: new THREE.MeshStandardMaterial({ color: 0xCDD4DD, roughness: 0.85 }),
+  tire: new THREE.MeshStandardMaterial({ color: 0xBFC8D3, roughness: 0.85 }),
   navy: new THREE.MeshPhysicalMaterial({ color: COL.navy, roughness: 0.38, metalness: 0.05, clearcoat: 0.7, clearcoatRoughness: 0.3 }),
   navyTire: new THREE.MeshStandardMaterial({ color: COL.navyTire, roughness: 0.8 }),
   glass: new THREE.MeshPhysicalMaterial({ color: 0xDDF2FF, roughness: 0.18, metalness: 0, transparent: true, opacity: 0.42, clearcoat: 1, clearcoatRoughness: 0.25, depthWrite: false, side: THREE.DoubleSide }),
+  chrome: new THREE.MeshPhysicalMaterial({ color: 0xDCE3EA, roughness: 0.28, metalness: 0.55, clearcoat: 0.4, clearcoatRoughness: 0.3 }),
+  navyGlass: new THREE.MeshPhysicalMaterial({ color: 0x1B2A40, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.1 }),
+  window: new THREE.MeshPhysicalMaterial({ color: 0xC9D2DC, roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.3 }),
   dock: new THREE.MeshStandardMaterial({ color: 0xDCE3EA, roughness: 0.9 }),
   dockGlow: new THREE.MeshStandardMaterial({ color: 0xBFEBFF, emissive: COL.sky, emissiveIntensity: 1.6, roughness: 0.4 }),
   routeBody: new THREE.MeshStandardMaterial({ color: 0xD8F1FF, emissive: COL.sky, emissiveIntensity: 0.22, roughness: 0.35, transparent: true, opacity: 0.78 }),
@@ -226,14 +230,15 @@ grove(-14, -21, 5); grove(25, -23, 4, 1); grove(29, 24, 5, 2); grove(-19, 22, 4,
 // ---------- fleet ----------
 const STATUS = { transit: ['In transit', COL.ok, '#E3F6EA', '#15803D'], idle: ['Idle', COL.warn, '#FEF3DC', '#B45309'], delivered: ['Delivered', '#6ED6FF', '#E1F5FF', '#0E79B2'], late: ['Running late', COL.alert, '#FBE5E7', '#B91C1C'] };
 const FLEET = [
-  { name: 'Asset 5', trip: 4417, driver: 'M. Bidamou', from: 'Salt Lake City, UT', to: 'North Platte, NE', route: 0, u: 0.08, navy: true },
+  { name: 'Asset 5', trip: 4417, driver: 'M. Bidamou', from: 'Salt Lake City, UT', to: 'North Platte, NE', route: 0, u: 0.2, navy: true },
   { name: 'Asset 4', trip: 4416, driver: 'R. Alvarez', from: 'Atlanta, GA', to: 'Memphis, TN', route: 0, u: 0.58 },
   { name: 'Asset 3', trip: 4418, driver: 'K. Nguyen', from: 'Evanston, WY', to: 'Rawlins, WY', route: 1, u: 0.22 },
   { name: 'Asset 2', trip: 4419, driver: 'D. Brooks', from: 'Dallas, TX', to: 'Tulsa, OK', route: 1, u: 0.72 },
   { name: 'Asset 1', trip: 4420, driver: 'S. Patel', from: 'Denver, CO', to: 'Omaha, NE', route: 0, u: 0.33 },
   { name: 'Asset 6', trip: 4421, driver: 'L. Carter', from: 'Reno, NV', to: 'Boise, ID', route: 1, u: 0.47 }
 ];
-const KINGPIN = 0.45, TRAILER_AXLE = 2.85, SPEED = 3.2; // world units / s
+// geometry constants match prototype/models/trucks.glb (built by models/trucks.py)
+const KINGPIN = 0.98, TRAILER_AXLE = KINGPIN + 2.8, SPEED = 3.2; // world units / s
 
 function haloTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
@@ -259,10 +264,38 @@ const trucks = FLEET.map((f, i) => {
   const base = new THREE.Mesh(hexBase, M.porcelain); base.castShadow = true;
   const top = new THREE.Mesh(hexGeo, pinMat.transit); top.position.y = 0.1;
   pin.add(base, top); pin.userData.top = top; scene.add(pin);
-  for (const m of [base, top]) { m.userData.truck = i; pickables.push(m); }
-  for (const o of [tractor, trailer]) o.traverse(m => { if (m.isMesh) { m.userData.truck = i; pickables.push(m); } });
   const curve = ROUTES[f.route], len = curve.getLength();
   return { ...f, i, tractor, trailer, halo, pin, pinStatus: 'transit', curve, len, status: 'transit', dwell: 0, tripStart: f.u, progress: 0.35 + i * 0.08, note: '' };
+});
+
+function collectPickables() {
+  pickables.length = 0;
+  trucks.forEach(t => [t.pin, t.tractor, t.trailer].forEach(o => o.traverse(m => { if (m.isMesh) { m.userData.truck = t.i; pickables.push(m); } })));
+}
+collectPickables();
+
+// swap the placeholder trucks for the modeled ones once loaded
+function skin(src, navy) {
+  const g = src.clone(true);
+  g.traverse(m => {
+    if (!m.isMesh) return;
+    const n = m.material.name;
+    m.material = n === 'Paint' ? (navy ? M.navy : M.porcelain)
+      : n === 'Trim' ? (navy ? M.chrome : M.porcelainShade)
+      : n === 'Window' ? (navy ? M.navyGlass : M.window)
+      : n === 'Tire' ? M.tire : n === 'Glass' ? M.glass : M.porcelain;
+    m.castShadow = n !== 'Glass'; m.receiveShadow = true;
+  });
+  return g;
+}
+new GLTFLoader().load(new URL('models/trucks.glb', import.meta.url).href, (gltf) => {
+  const lib = {}; gltf.scene.children.forEach(c => { lib[c.name] = c; });
+  if (!lib.Tractor || !lib.Trailer || !lib.TrailerGlass) return;
+  trucks.forEach(t => {
+    t.tractor.clear(); t.tractor.add(skin(lib.Tractor, !!t.navy));
+    t.trailer.clear(); t.trailer.add(skin(t.navy ? lib.TrailerGlass : lib.Trailer, !!t.navy));
+  });
+  collectPickables();
 });
 
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpK = new THREE.Vector3();
@@ -330,8 +363,8 @@ composer.addPass(grain);
 
 // ---------- camera rig ----------
 const rig = {
-  az: -0.62, pol: 1.0, dist: 84, target: new THREE.Vector3(6, 0, 2),
-  goal: { az: -0.62, pol: 1.0, dist: 84, target: new THREE.Vector3(6, 0, 2) }
+  az: -0.62, pol: 1.0, dist: 72, target: new THREE.Vector3(6, 0, 2),
+  goal: { az: -0.62, pol: 1.0, dist: 72, target: new THREE.Vector3(6, 0, 2) }
 };
 if (!reduceMotion) { rig.pol = 1.3; rig.dist = 64; rig.az = -0.95; }
 let selected = -1, viewShift = 0;
@@ -393,8 +426,8 @@ function select(i) {
   selected = i;
   $('tv-hint').classList.add('gone');
   list.querySelectorAll('li').forEach(li => li.classList.toggle('sel', +li.dataset.i === i));
-  if (i < 0) { card.hidden = true; rig.goal.dist = 84; rig.goal.pol = 1.0; rig.goal.target.set(6, 0, 2); return; }
-  card.hidden = false; rig.goal.dist = 40; rig.goal.pol = 0.92;
+  if (i < 0) { card.hidden = true; rig.goal.dist = 72; rig.goal.pol = 1.0; rig.goal.target.set(6, 0, 2); return; }
+  card.hidden = false; rig.goal.dist = 30; rig.goal.pol = 0.92;
   renderCard(trucks[i], true);
 }
 
