@@ -13,7 +13,7 @@ SAMPLES = int(argv[1]) if len(argv) > 1 else 256
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # ground bake area (three.js units) — mirrored by GROUND_BAKE in tower-view.js
-G_CX, G_CZ, G_W, G_D = 4.0, 0.0, 128.0, 96.0
+G_CX, G_CZ, G_W, G_D = 2.0, 0.0, 80.0, 60.0
 G_RES = (2048, 1536)
 AO_RES = 2048
 
@@ -108,8 +108,7 @@ def office(x, z, w, d, h, rot=0.0):
 
 # ---------- routes (port of three.js centripetal CatmullRomCurve3, closed) ----------
 ROUTES = [
-    [(-23,-2),(-15,-10),(-2,-16),(12,-16),(24,-11),(32,-2),(31,9),(21,14),(8,11),(-6,6),(-17,3)],
-    [(-23,4),(-16,13),(-4,19),(10,20),(20,16),(22,8),(14,2),(2,0),(-11,-1),(-19,0)]]
+    [(-16,-1),(-6,-1.5),(6,-1.5),(16,-1),(21,3),(18,8),(6,9.5),(-6,9.5),(-18,8),(-21,3)]]
 
 def catmull(points, t):
     l = len(points); p = l * t; ip = int(math.floor(p)); w = p - ip
@@ -139,31 +138,26 @@ def grove(x, z, n, seed=0):
         s = 0.75 + ((i * 37) % 10) / 22
         cyl('Porcelain', 0.6 * s, 1.8 * s, (px, -pz, 0.9 * s), 32, 0.0, r2=0.02)
 
-# ---------- layout (mirrors the original three.js set) ----------
-warehouse(-30, 1, math.pi / 2, 11, 6, h=2.1, glow=2)     # hub depot, docks facing the routes
-office(-30, 10.5, 3.2, 3.2, 3.4)
-warehouse(6, -23.5, 0, 12, 5)                           # north distribution centre
-office(17, -24, 3, 3, 2.6)
-warehouse(40.5, 2, -math.pi / 2, 10, 4)                 # east depot
-office(41, 12, 2.6, 2.6, 3.8)
-warehouse(5, 27.5, math.pi, 12, 5)                      # south distribution centre
-office(10, -6, 2.6, 2.6, 2.2); office(13.5, -6.5, 2, 2, 3.2)
-grove(-14, -21, 5); grove(25, -23, 4, 1); grove(29, 24, 5, 2); grove(-19, 22, 4, 3); grove(45, -12, 4, 4); grove(-38, -4, 3, 5)
+# ---------- layout: one distribution centre on a short loop ----------
+warehouse(0, -10.5, 0, 14, 6)                           # docks face the route (+z)
+office(12.5, -10.5, 3, 3, 2.6)
+office(9, 4, 3, 3, 2.6)                                 # yard office inside the loop
+grove(-14, -12, 5); grove(18, -13, 4, 1); grove(-6, 4, 3, 2); grove(27, 2, 4, 3)
 
-# trailer lot beside the depot, using the dry van from trucks.glb
-lot = frame(-31.7, -11.2, 0); box('Pad', -3.4, 3.4, -2.6, 2.6, 0, 0.018, 0.01, 2, lot)
+# trailers backed into docks 2 and 5, using the dry van from trucks.glb
 bpy.ops.import_scene.gltf(filepath=os.path.join(HERE, 'trucks.glb'))
 lib = {o.name: o for o in bpy.context.selected_objects}
 van = [o for o in lib.values() if o.parent and o.parent.name.startswith('Trailer') and not o.parent.name.startswith('TrailerGlass')]
-for i in range(5):
+pitch = (14 - 2.8) / 5
+for dock in (1, 4):
+    x = -7 + 1.4 + dock * pitch
     for src in van:
-        o = src.copy(); o.data = src.data.copy(); o.parent = None; col.objects.link(o)
-        o.matrix_world = src.matrix_world.copy()
-        # three.js rotation.y = -PI/2 at (-34.2 + i*1.25, 0, -9.5): forward +x -> +z(three) -> -y(blender)
-        tmp = frame(-34.2 + i * 1.25, -9.5, -math.pi / 2); o.parent = tmp
+        o = src.copy(); o.data = src.data.copy(); col.objects.link(o)
+        o.parent = frame(x, -8.4 + 3.44 + 0.1, -math.pi / 2)
+        o.matrix_parent_inverse.identity(); o.matrix_basis.identity()
         name = src.data.materials[0].name
-        o.data.materials[0] = MAT['Porcelain' if name == 'Paint' else 'Shade' if name in ('Trim', 'Tire') else 'Porcelain']
-        dec = o.modifiers.new('lod', 'DECIMATE'); dec.ratio = 0.3
+        o.data.materials[0] = MAT['Porcelain' if name == 'Paint' else 'Shade']
+        dec = o.modifiers.new('lod', 'DECIMATE'); dec.ratio = 0.5
         PARTS.append(o)
 for o in list(lib.values()): bpy.data.objects.remove(o, do_unlink=True)
 

@@ -140,8 +140,7 @@ function buildTrailer(navy) {
 
 // ---------- routes ----------
 const ROUTES = [
-  [[-23,-2],[-15,-10],[-2,-16],[12,-16],[24,-11],[32,-2],[31,9],[21,14],[8,11],[-6,6],[-17,3]],
-  [[-23,4],[-16,13],[-4,19],[10,20],[20,16],[22,8],[14,2],[2,0],[-11,-1],[-19,0]]
+  [[-16,-1],[-6,-1.5],[6,-1.5],[16,-1],[21,3],[18,8],[6,9.5],[-6,9.5],[-18,8],[-21,3]]
 ].map(pts => new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 0, z)), true, 'centripetal', 0.5));
 
 const routeMat = new THREE.ShaderMaterial({
@@ -217,19 +216,14 @@ function grove(x, z, n, seedOffset = 0) {
   }
 }
 function buildProceduralSet() {
-  addDepot();
-  office(-30, 10.5, 3.2, 3.2, 3.4);                     // hub office
-  warehouse(6, -23.5, 0, 12, 5);                         // north distribution centre, docks facing the route
-  office(17, -24, 3, 3, 2.6);
-  warehouse(40.5, 2, -Math.PI / 2, 10, 4);               // east depot
-  office(41, 12, 2.6, 2.6, 3.8);
-  warehouse(5, 27.5, Math.PI, 12, 5);                    // south distribution centre
-  office(10, -6, 2.6, 2.6, 2.2); office(13.5, -6.5, 2, 2, 3.2); // inner block
-  grove(-14, -21, 5); grove(25, -23, 4, 1); grove(29, 24, 5, 2); grove(-19, 22, 4, 3); grove(45, -12, 4, 4); grove(-38, -4, 3, 5);
+  warehouse(0, -10.5, 0, 14, 6);                         // distribution centre, docks facing the route
+  office(12.5, -10.5, 3, 3, 2.6);
+  office(9, 4, 3, 3, 2.6);
+  grove(-14, -12, 5); grove(18, -13, 4, 1); grove(-6, 4, 3, 2); grove(27, 2, 4, 3);
 }
 
 // baked set: geometry + AO atlas + ground shadow texture, built by models/set.py
-const GROUND_BAKE = { cx: 4, cz: 0, w: 128, d: 96 };
+const GROUND_BAKE = { cx: 2, cz: 0, w: 80, d: 60 };
 const texLoader = new THREE.TextureLoader();
 function loadTex(name, flipY) {
   const t = texLoader.load(new URL('models/' + name, import.meta.url).href);
@@ -256,12 +250,10 @@ new GLTFLoader().load(new URL('models/set.glb', import.meta.url).href, (gltf) =>
 // ---------- fleet ----------
 const STATUS = { transit: ['In transit', COL.ok, '#E3F6EA', '#15803D'], idle: ['Idle', COL.warn, '#FEF3DC', '#B45309'], delivered: ['Delivered', '#6ED6FF', '#E1F5FF', '#0E79B2'], late: ['Running late', COL.alert, '#FBE5E7', '#B91C1C'] };
 const FLEET = [
-  { name: 'Asset 5', trip: 4417, driver: 'M. Bidamou', from: 'Salt Lake City, UT', to: 'North Platte, NE', route: 0, u: 0.2, navy: true },
-  { name: 'Asset 4', trip: 4416, driver: 'R. Alvarez', from: 'Atlanta, GA', to: 'Memphis, TN', route: 0, u: 0.58 },
-  { name: 'Asset 3', trip: 4418, driver: 'K. Nguyen', from: 'Evanston, WY', to: 'Rawlins, WY', route: 1, u: 0.22 },
-  { name: 'Asset 2', trip: 4419, driver: 'D. Brooks', from: 'Dallas, TX', to: 'Tulsa, OK', route: 1, u: 0.72 },
-  { name: 'Asset 1', trip: 4420, driver: 'S. Patel', from: 'Denver, CO', to: 'Omaha, NE', route: 0, u: 0.33 },
-  { name: 'Asset 6', trip: 4421, driver: 'L. Carter', from: 'Reno, NV', to: 'Boise, ID', route: 1, u: 0.47 }
+  { name: 'Asset 4', trip: 4417, driver: 'M. Bidamou', from: 'Salt Lake City, UT', to: 'North Platte, NE', route: 0, u: 0.62, navy: true },
+  { name: 'Asset 3', trip: 4416, driver: 'R. Alvarez', from: 'Atlanta, GA', to: 'Memphis, TN', route: 0, u: 0.88 },
+  { name: 'Asset 2', trip: 4418, driver: 'K. Nguyen', from: 'Evanston, WY', to: 'Rawlins, WY', route: 0, u: 0.14 },
+  { name: 'Asset 1', trip: 4419, driver: 'D. Brooks', from: 'Dallas, TX', to: 'Tulsa, OK', route: 0, u: 0.38 }
 ];
 // geometry constants match prototype/models/trucks.glb (built by models/trucks.py)
 const KINGPIN = 0.98, TRAILER_AXLE = KINGPIN + 2.8, SPEED = 3.2; // world units / s
@@ -341,7 +333,7 @@ function place(t) {
 trucks.forEach(place);
 
 // trip events: deliveries at fixed stops, occasional idle
-const STOPS = [[0.36, 0.78], [0.4, 0.88]];
+const STOPS = [[0.12, 0.6]];
 function stepTruck(t, dt) {
   if (t.dwell > 0) {
     t.dwell -= dt;
@@ -386,11 +378,15 @@ const grain = new ShaderPass({
 });
 
 // ---------- camera rig ----------
+// home framing; ?cam=az,pol,dist,x,z overrides it for art-direction checks
+const HOME = { az: -0.45, pol: 0.72, dist: 60, x: -3, z: 4 };
+const camParam = new URLSearchParams(location.search).get('cam');
+if (camParam) [HOME.az, HOME.pol, HOME.dist, HOME.x, HOME.z] = camParam.split(',').map(Number);
 const rig = {
-  az: -0.62, pol: 1.0, dist: 72, target: new THREE.Vector3(6, 0, 2),
-  goal: { az: -0.62, pol: 1.0, dist: 72, target: new THREE.Vector3(6, 0, 2) }
+  az: HOME.az, pol: HOME.pol, dist: HOME.dist, target: new THREE.Vector3(HOME.x, 0, HOME.z),
+  goal: { az: HOME.az, pol: HOME.pol, dist: HOME.dist, target: new THREE.Vector3(HOME.x, 0, HOME.z) }
 };
-if (!reduceMotion) { rig.pol = 1.3; rig.dist = 64; rig.az = -0.95; }
+if (!reduceMotion) { rig.pol = HOME.pol + 0.22; rig.dist = HOME.dist * 0.85; rig.az = HOME.az - 0.3; }
 let selected = -1, viewShift = 0;
 
 function resize() {
@@ -450,8 +446,8 @@ function select(i) {
   selected = i;
   $('tv-hint').classList.add('gone');
   list.querySelectorAll('li').forEach(li => li.classList.toggle('sel', +li.dataset.i === i));
-  if (i < 0) { card.hidden = true; rig.goal.dist = 72; rig.goal.pol = 1.0; rig.goal.target.set(6, 0, 2); return; }
-  card.hidden = false; rig.goal.dist = 30; rig.goal.pol = 0.92;
+  if (i < 0) { card.hidden = true; rig.goal.dist = HOME.dist; rig.goal.pol = HOME.pol; rig.goal.target.set(HOME.x, 0, HOME.z); return; }
+  card.hidden = false; rig.goal.dist = 24; rig.goal.pol = 0.92;
   renderCard(trucks[i], true);
 }
 
@@ -474,6 +470,7 @@ function renderCard(t) {
   $('c-note').textContent = t.note;
 }
 function renderList() {
+  $('tv-online').textContent = `${trucks.length} assets online`;
   list.querySelectorAll('li').forEach(li => {
     const t = trucks[+li.dataset.i]; const [label, col] = STATUS[t.status];
     li.querySelector('.dot').style.background = col;
