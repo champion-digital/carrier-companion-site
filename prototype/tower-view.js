@@ -6,12 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { HorizontalTiltShiftShader } from 'three/addons/shaders/HorizontalTiltShiftShader.js';
-import { VerticalTiltShiftShader } from 'three/addons/shaders/VerticalTiltShiftShader.js';
 
 const $ = (id) => document.getElementById(id);
 const stage = $('tv-stage'), canvas = $('tv-canvas');
@@ -256,17 +251,21 @@ new GLTFLoader().load(new URL('models/set.glb', import.meta.url).href, (gltf) =>
   const light = loadTex('set-light.jpg', false);   // sun + sky + bounce, normalised (open ground = 1), stored at 1/1.5
   const baked = (hex) => new THREE.MeshBasicMaterial({ color: hex, lightMap: light, lightMapIntensity: Math.PI * 1.5, toneMapped: false });
   const map = { Porcelain: baked(0xEEF1F5), Shade: baked(0xDDE3EA), Window: baked(0xAEBFD1), Dock: baked(0xD5DCE4), DockGlow: M.dockGlow,
-    Pad: baked(0xE4E9EF), Road: baked(0xD6DCE3), Paint: new THREE.MeshBasicMaterial({ color: 0xF7F9FB, toneMapped: false }) };
+    Pad: baked(0xE4E9EF) };
+  // flat ground surfaces (road, paint, aprons): no bake, the shared ground-shadow layer sits on top of them
+  const flatMat = (hex) => new THREE.MeshBasicMaterial({ color: hex, toneMapped: false });
+  const flat = { Road: flatMat(0xD6DCE3), Pad: flatMat(0xE4E9EF), Paint: flatMat(0xF7F9FB) };
   gltf.scene.traverse(m => {
     if (!m.isMesh) return;
-    m.material = map[m.material.name] || map.Porcelain;
+    const n = m.material.name;
+    m.material = flat[n] && /Flat/.test(m.name + (m.parent ? m.parent.name : '')) ? flat[n] : map[n] || flat[n] || map.Porcelain;
     m.castShadow = false; m.receiveShadow = true;
   });
   scene.add(gltf.scene);
   const shade = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_BAKE.w, GROUND_BAKE.d), new THREE.MeshBasicMaterial({
     map: loadTex('ground-shadow.jpg', true), blending: THREE.MultiplyBlending, transparent: true, premultipliedAlpha: true, depthWrite: false, toneMapped: false
   }));
-  shade.rotation.x = -Math.PI / 2; shade.position.set(GROUND_BAKE.cx, 0.004, GROUND_BAKE.cz); shade.renderOrder = -1;
+  shade.rotation.x = -Math.PI / 2; shade.position.set(GROUND_BAKE.cx, 0.03, GROUND_BAKE.cz); // above road, paint and aprons shade.renderOrder = -1;
   scene.add(shade);
 }, undefined, () => buildProceduralSet());
 
@@ -395,14 +394,7 @@ try {
   gtao.blendIntensity = 0.75;
   // composer.addPass(gtao);  // off: baked GI covers the set, the studio dome covers the trucks
 } catch (e) { gtao = null; }
-const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.28, 0.3, 0.95);
-const tiltH = new ShaderPass(HorizontalTiltShiftShader), tiltV = new ShaderPass(VerticalTiltShiftShader);
 composer.addPass(new OutputPass());
-const grain = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, amount: { value: 0.022 } },
-  vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-  fragmentShader: 'uniform sampler2D tDiffuse; uniform float time; uniform float amount; varying vec2 vUv; float h(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233))+time)*43758.5453); } void main(){ vec4 c=texture2D(tDiffuse,vUv); c.rgb+= (h(vUv*1000.0)-0.5)*amount; gl_FragColor=c; }'
-});
 
 // ---------- camera rig ----------
 // home framing; ?cam=az,pol,dist,x,z overrides it for art-direction checks
@@ -420,7 +412,6 @@ function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   renderer.setSize(w, h, false); composer.setSize(w, h);
   if (gtao) gtao.setSize(w, h);
-  tiltH.uniforms.h.value = 1.1 / w; tiltV.uniforms.v.value = 1.1 / h;
   camera.aspect = w / h;
   viewShift = w > 900 ? Math.round(w * 0.16) : 0;
   if (viewShift) camera.setViewOffset(w, h, -viewShift, 0, w, h); else camera.clearViewOffset();
@@ -432,6 +423,7 @@ function applyCamera() {
   const sp = new THREE.Spherical(rig.dist, rig.pol, rig.az);
   camera.position.setFromSpherical(sp).add(rig.target);
   camera.lookAt(rig.target);
+  camera.updateMatrixWorld(); // keep projections (dots, card) in sync with this frame, not the last one
 }
 
 // drag to orbit gently
@@ -553,11 +545,6 @@ function frame(dt) {
   uiTimer += dt;
   if (uiTimer > 0.25) { uiTimer = 0; renderList(); if (selected >= 0) renderCard(trucks[selected]); }
   positionCard(); positionDots();
-  grain.uniforms.time.value = simTime % 100;
-  routeMat.uniforms.time.value = simTime;
-  let focus = 0.46;
-  if (selected >= 0) { proj.copy(trucks[selected].tractor.position).project(camera); focus = THREE.MathUtils.clamp(proj.y * 0.5 + 0.5, 0.15, 0.85); }
-  tiltH.uniforms.r.value += (focus - tiltH.uniforms.r.value) * 0.1; tiltV.uniforms.r.value = tiltH.uniforms.r.value;
   composer.render();
 }
 function tick() {
@@ -570,4 +557,4 @@ applyCamera();
 const qs = new URLSearchParams(location.search);
 if (qs.has('shot')) { for (let i = 0; i < 300; i++) frame(1 / 60); const sel = qs.get('shot'); if (sel !== 'default') { select(+sel); for (let i = 0; i < 200; i++) frame(1 / 60); } }
 tick();
-window.__tv = { rig, select, trucks, camera, bloom, gtao, M, key, hemi, scene, step: (n = 60, dt = 1 / 60) => { for (let i = 0; i < n; i++) frame(dt); } };
+window.__tv = { rig, select, trucks, camera, gtao, M, key, hemi, scene, step: (n = 60, dt = 1 / 60) => { for (let i = 0; i < n; i++) frame(dt); } };

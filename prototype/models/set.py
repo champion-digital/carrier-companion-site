@@ -107,7 +107,7 @@ def warehouse(x, z, rot, length, docks, h=1.9, depth=4.2, glow=-1):
     box('Pad', -L - 0.3, L + 0.3, -D - 3.0, -D, 0, 0.018, 0.01, 2, f)
     for i in range(docks + 1):
         dx = -L + 1.4 + (i - 0.5) * pitch
-        box('Shade', dx - 0.03, dx + 0.03, -D - 2.8, -D - 0.2, 0.018, 0.024, parent=f)
+        box('Paint', dx - 0.03, dx + 0.03, -D - 2.8, -D - 0.2, 0.018, 0.021, parent=f)
     door_x = L - 0.9                                           # personnel door
     box('Window', door_x - 0.22, door_x + 0.22, -D - 0.03, -D + 0.01, 0, 0.62, 0.01, 2, f)
 
@@ -222,30 +222,30 @@ def dashes(pts, o, w, z, on=0.7, off=0.6):
     for a, b in zip(pts, pts[1:] + pts[:1]):
         acc += math.hypot(b[0] - a[0], b[1] - a[1]); cur.append(b)
         if acc >= (on if draw else off):
-            if draw and len(cur) > 1: strip(cur, o - w / 2, o + w / 2, z, z + 0.006, 'Paint', closed=False)
+            if draw and len(cur) > 1: strip(cur, o - w / 2, o + w / 2, z, z + 0.003, 'Paint', closed=False)
             acc, cur, draw = 0.0, [b], not draw
 
 def roads():
     loop = rounded_rect(RX0, RX1, RZ0, RZ1, RR)
-    strip(loop, -RW / 2, RW / 2, 0, 0.03, 'Road')
+    strip(loop, -RW / 2, RW / 2, 0, 0.02, 'Road')
     def gap(x, z):                                   # openings for the exits and the dock driveway
         if abs(z - EXIT_Z) < 1.6 and abs(abs(x) - 20) < 0.5: return False
         if abs(x) < 4.2 and z < RZ0 + 0.5: return False
         return True
     for o in (-1.12, 1.12):
         for r in runs(loop, gap if o < 0 else (lambda x, z: True)):
-            strip(r, o - 0.035, o + 0.035, 0.03, 0.036, 'Paint', closed=False)
-    dashes(loop, 0, 0.07, 0.03)
+            strip(r, o - 0.035, o + 0.035, 0.02, 0.023, 'Paint', closed=False)
+    dashes(loop, 0, 0.07, 0.02)
     for sx in (-1, 1):                               # side exits running off-scene
         line = [(sx * (20 + i * 0.5), EXIT_Z) for i in range(0, 121)]
         if sx < 0: line = line[::-1]
-        strip(line, -RW / 2, RW / 2, 0, 0.022, 'Road', closed=False)   # sits below the loop at the junction
+        strip(line, -RW / 2, RW / 2, 0, 0.014, 'Road', closed=False)   # sits below the loop at the junction
         edge = [p for p in line if abs(p[0]) > 21.3]
         for o in (-1.12, 1.12):
-            strip(edge, o - 0.035, o + 0.035, 0.022, 0.03, 'Paint', closed=False)
-        dashes(edge, 0, 0.07, 0.022)
+            strip(edge, o - 0.035, o + 0.035, 0.014, 0.017, 'Paint', closed=False)
+        dashes(edge, 0, 0.07, 0.014)
     # dock driveway: from the loop's outer edge to the dock apron
-    box('Pad', -4.0, 4.0, -(RZ0 - RW / 2 + 0.05), -(-5.4), 0, 0.016, 0.01, 2)
+    box('Pad', -4.0, 4.0, -(RZ0 - RW / 2 + 0.05), -(-5.4), 0, 0.012, 0.01, 2)
 
 ROAD_PTS = rounded_rect(RX0, RX1, RZ0, RZ1, RR, 0.5) + [(x, EXIT_Z) for x in range(-60, -19)] + [(x, EXIT_Z) for x in range(20, 61)]
 def clear_of(x, z, r): return all((p[0]-x)**2 + (p[1]-z)**2 > r * r for p in ROAD_PTS)
@@ -299,18 +299,29 @@ for dock in (1, 4):
         PARTS.append(o)
 for o in list(lib.values()): bpy.data.objects.remove(o, do_unlink=True)
 
-# ---------- merge set into one mesh ----------
-bpy.ops.object.select_all(action='DESELECT')
-for o in PARTS: o.select_set(True)
-bpy.context.view_layer.objects.active = PARTS[0]
-bpy.ops.object.convert(target='MESH')
-for o in PARTS:
-    mw = o.matrix_world.copy(); o.parent = None; o.matrix_world = mw
-bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-bpy.ops.object.join()
-setobj = bpy.context.view_layer.objects.active; setobj.name = setobj.data.name = 'Set'
+# ---------- merge ----------
+# Flat ground surfaces (road, paint, aprons) stay out of the light bake: they neither cast nor
+# catch contact shadows. tower-view.js draws them flat and lays the baked ground shadow over them.
+def merge(objs, name):
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in objs: o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+    bpy.ops.object.convert(target='MESH')
+    for o in objs:
+        mw = o.matrix_world.copy(); o.parent = None; o.matrix_world = mw
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    bpy.ops.object.join()
+    j = bpy.context.view_layer.objects.active; j.name = j.data.name = name
+    return j
+
+FLAT_MATS = ('Pad', 'Road', 'Paint')
+flat_parts = [o for o in PARTS if o.data.materials[0].name in FLAT_MATS]
+set_parts = [o for o in PARTS if o.data.materials[0].name not in FLAT_MATS]   # split before joining removes objects
+flat = merge(flat_parts, 'Flat')
+setobj = merge(set_parts, 'Set')
 for o in [o for o in col.objects if o.type == 'EMPTY']: bpy.data.objects.remove(o, do_unlink=True)
 bpy.ops.object.shade_smooth_by_angle(angle=math.radians(40))
+flat.hide_render = True
 setobj.data.calc_loop_triangles(); print('SET TRIANGLES', len(setobj.data.loop_triangles))
 
 # lightmap UVs
@@ -400,6 +411,7 @@ print('LIGHT p5/p50/p95', [float(np.percentile(lm[..., 1][lm[..., 1] > 0.01], q)
 # ---------- export set ----------
 for m in setobj.data.materials:                             # drop bake nodes before export
     for n in [n for n in m.node_tree.nodes if n.type == 'TEX_IMAGE']: m.node_tree.nodes.remove(n)
-bpy.ops.object.select_all(action='DESELECT'); setobj.select_set(True)
+flat.hide_render = False
+bpy.ops.object.select_all(action='DESELECT'); setobj.select_set(True); flat.select_set(True)
 bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, 'set.glb'), export_format='GLB', use_selection=True, export_yup=True)
 print('EXPORTED set.glb')
