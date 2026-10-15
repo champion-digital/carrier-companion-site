@@ -29,7 +29,7 @@ def material(name, rgb, rough=0.6):
 
 MAT = {n: material(n, c) for n, c in {
     'Porcelain': (0.88, 0.9, 0.93), 'Shade': (0.78, 0.82, 0.86), 'Window': (0.66, 0.74, 0.82),
-    'Dock': (0.74, 0.78, 0.83), 'DockGlow': (0.6, 0.85, 1.0), 'Pad': (0.83, 0.86, 0.9)}.items()}
+    'Dock': (0.74, 0.78, 0.83), 'DockGlow': (0.6, 0.85, 1.0), 'Pad': (0.83, 0.86, 0.9), 'Road': (0.78, 0.81, 0.85), 'Paint': (0.97, 0.98, 0.99)}.items()}
 
 PARTS = []
 def finish(o, mat, bevel=0.0, seg=3):
@@ -79,6 +79,23 @@ def warehouse(x, z, rot, length, docks, h=1.9, depth=4.2, glow=-1):
         box('Shade', ux * L - 0.32, ux * L + 0.32, 1.1 - 0.26, 1.1 + 0.26, h, h + 0.3, 0.04, 2, f)
         cyl('Shade', 0.15, 0.05, (ux * L, 1.1, h + 0.32), 20, 0.01, parent=f)
     pitch = (length - 2.8) / max(1, docks - 1)
+    docks_x = [-L + 1.4 + i * pitch for i in range(docks)]
+    px = -L + 0.7
+    while px < L - 0.5:                                        # facade pilasters
+        if all(abs(px - dx) > 0.75 for dx in docks_x):
+            box('Porcelain', px - 0.05, px + 0.05, -D - 0.03, -D + 0.01, 0, h, 0.01, 1, f)
+        box('Porcelain', px - 0.05, px + 0.05, D - 0.01, D + 0.03, 0, h, 0.01, 1, f)
+        px += 1.4
+    py = -D + 0.7
+    while py < D - 0.5:
+        for sx in (-1, 1):
+            box('Porcelain', sx * L - 0.03 if sx < 0 else L - 0.01, -L + 0.01 if sx < 0 else L + 0.03, py - 0.05, py + 0.05, 0, h, 0.01, 1, f)
+        py += 1.4
+    for hx in (-0.45, 0.35):                                   # roof hatches
+        box('Shade', hx * L - 0.18, hx * L + 0.18, -1.3, -0.95, h, h + 0.1, 0.02, 2, f)
+    for bx in (-L - 0.15, L + 0.15):                           # bollards + lot lights
+        bollard(bx, -D - 2.85, f)
+    light_pole(-L - 0.55, -D - 1.6, f, 1); light_pole(L + 0.55, -D - 1.6, f, -1)
     for i in range(docks):
         dx = -L + 1.4 + i * pitch
         box('Shade', dx - 0.56, dx + 0.56, -D - 0.07, -D + 0.01, 0.38, 1.42, 0.02, 2, f)        # seal
@@ -95,53 +112,174 @@ def warehouse(x, z, rot, length, docks, h=1.9, depth=4.2, glow=-1):
     box('Window', door_x - 0.22, door_x + 0.22, -D - 0.03, -D + 0.01, 0, 0.62, 0.01, 2, f)
 
 def office(x, z, w, d, h, rot=0.0):
+    """Glass box wrapped in porcelain floor slabs, with mullions, parapet and entrance canopy."""
+    f = frame(x, z, rot); W, Dd = w / 2, d / 2
+    fh = 0.7; n = max(1, int((h - 0.35) / fh)); top = 0.18 + n * fh
+    box('Porcelain', -W, W, -Dd, Dd, 0, 0.2, 0.03, 2, f)                                  # plinth
+    box('Window', -W + 0.09, W - 0.09, -Dd + 0.09, Dd - 0.09, 0.18, top, 0, 0, f)          # glass volume
+    for k in range(1, n + 1):
+        zt = 0.18 + k * fh
+        box('Porcelain', -W, W, -Dd, Dd, zt - 0.15, zt, 0.03, 2, f)                        # floor slabs
+    for k in range(n):                                                                     # mullions
+        z0, z1 = 0.2 + k * fh, 0.18 + (k + 1) * fh - 0.15
+        for i in range(1, int(w / 0.42)):
+            mx = -W + i * w / int(w / 0.42)
+            for sy in (-1, 1):
+                ya, yb = (Dd - 0.09, Dd) if sy > 0 else (-Dd, -Dd + 0.09)
+                box('Porcelain', mx - 0.025, mx + 0.025, ya, yb, z0, z1, parent=f)
+        for i in range(1, int(d / 0.42)):
+            my = -Dd + i * d / int(d / 0.42)
+            for sx in (-1, 1):
+                xa, xb = (W - 0.09, W) if sx > 0 else (-W, -W + 0.09)
+                box('Porcelain', xa, xb, my - 0.025, my + 0.025, z0, z1, parent=f)
+    t = 0.07                                                                               # parapet
+    for xa, xb, ya, yb in ((-W, W, -Dd, -Dd + t), (-W, W, Dd - t, Dd), (-W, -W + t, -Dd, Dd), (W - t, W, -Dd, Dd)):
+        box('Porcelain', xa, xb, ya, yb, top, top + 0.12, 0.015, 2, f)
+    box('Shade', -w * 0.22, w * 0.18, -d * 0.12, d * 0.24, top, top + 0.24, 0.04, 2, f)      # roof unit
+    box('Porcelain', w * 0.22, w * 0.36, -d * 0.3, -d * 0.1, top, top + 0.34, 0.03, 2, f)   # stair core
+    box('Porcelain', -0.55, 0.55, -Dd - 0.55, -Dd, 0.62, 0.68, 0.015, 2, f)                 # entrance canopy
+    for cx in (-0.5, 0.5):
+        cyl('Shade', 0.025, 0.62, (cx, -Dd - 0.5, 0.31), 10, parent=f)
+    box('Pad', -W - 0.4, W + 0.4, -Dd - 1.0, -Dd, 0, 0.018, 0.01, 2, f)                    # walk
+
+def bollard(x, y, f):
+    cyl('Porcelain', 0.065, 0.42, (x, y, 0.21), 16, 0.012, parent=f)
+    cyl('Shade', 0.07, 0.05, (x, y, 0.44), 16, 0.01, parent=f)
+
+def light_pole(x, y, f, dirx=1):
+    cyl('Shade', 0.04, 2.5, (x, y, 1.25), 12, parent=f)
+    box('Shade', min(x, x + dirx * 0.45), max(x, x + dirx * 0.45), y - 0.025, y + 0.025, 2.45, 2.5, parent=f)
+    box('Porcelain', x + dirx * 0.3 - 0.16, x + dirx * 0.3 + 0.16, y - 0.09, y + 0.09, 2.4, 2.47, 0.015, 2, f)
+
+def guard_booth(x, z, rot=0.0):
     f = frame(x, z, rot)
-    box('Porcelain', -w / 2, w / 2, -d / 2, d / 2, 0, h, 0.15, 4, f)
-    floors = max(1, int((h - 0.4) / 0.72))
-    for k in range(floors):
-        zc = 0.55 + k * 0.72
-        box('Window', -w / 2 + 0.03, w / 2 - 0.03, -d / 2 - 0.006, d / 2 + 0.006, zc - 0.12, zc + 0.12, 0.01, 2, f)
-        box('Window', -w / 2 - 0.006, w / 2 + 0.006, -d / 2 + 0.03, d / 2 - 0.03, zc - 0.12, zc + 0.12, 0.01, 2, f)
-    box('Shade', -w * 0.22, w * 0.22, -d * 0.18, d * 0.18, h, h + 0.22, 0.04, 2, f)          # roof unit
-    box('Window', -0.26, 0.26, -d / 2 - 0.03, -d / 2 + 0.01, 0, 0.5, 0.01, 2, f)               # entrance
-    box('Pad', -w / 2 - 0.4, w / 2 + 0.4, -d / 2 - 0.9, -d / 2, 0, 0.018, 0.01, 2, f)          # walk
+    box('Porcelain', -0.5, 0.5, -0.5, 0.5, 0, 0.12, 0.02, 2, f)
+    box('Window', -0.4, 0.4, -0.4, 0.4, 0.12, 0.82, 0, 0, f)
+    for cx in (-0.4, 0.4):
+        for cy in (-0.4, 0.4):
+            box('Porcelain', cx - 0.05, cx + 0.05, cy - 0.05, cy + 0.05, 0.12, 0.82, 0.01, 1, f)
+    box('Porcelain', -0.4, 0.4, -0.4, 0.4, 0.12, 0.4, 0.01, 1, f)                         # lower panel
+    box('Porcelain', -0.62, 0.62, -0.62, 0.62, 0.82, 0.92, 0.03, 2, f)                     # roof
 
-# ---------- routes (port of three.js centripetal CatmullRomCurve3, closed) ----------
-ROUTES = [
-    [(-16,-1),(-6,-1.5),(6,-1.5),(16,-1),(21,3),(18,8),(6,9.5),(-6,9.5),(-18,8),(-21,3)]]
+def fence(points, h=0.55):
+    for (x0, z0), (x1, z1) in zip(points, points[1:]):
+        L = math.hypot(x1 - x0, z1 - z0); n = max(1, int(L / 0.9))
+        for i in range(n + 1):
+            px, pz = x0 + (x1 - x0) * i / n, z0 + (z1 - z0) * i / n
+            cyl('Shade', 0.03, h, (px, -pz, h / 2), 8)
+        f = frame((x0 + x1) / 2, (z0 + z1) / 2, math.atan2(-(z1 - z0), x1 - x0))
+        for zr in (0.24, 0.5):
+            box('Shade', -L / 2, L / 2, -0.012, 0.012, zr - 0.012, zr + 0.012, parent=f)
 
-def catmull(points, t):
-    l = len(points); p = l * t; ip = int(math.floor(p)); w = p - ip
-    P = [points[(ip + k) % l] for k in (-1, 0, 1, 2)]
-    def d(a, b): return max(((a[0]-b[0])**2 + (a[1]-b[1])**2) ** 0.25, 0.0)
-    dt0, dt1, dt2 = d(P[0], P[1]), d(P[1], P[2]), d(P[2], P[3])
-    if dt1 < 1e-4: dt1 = 1.0
-    if dt0 < 1e-4: dt0 = dt1
-    if dt2 < 1e-4: dt2 = dt1
-    out = []
-    for k in (0, 1):
-        x0, x1, x2, x3 = (q[k] for q in P)
-        t1 = ((x1 - x0) / dt0 - (x2 - x0) / (dt0 + dt1) + (x2 - x1) / dt1) * dt1
-        t2 = ((x2 - x1) / dt1 - (x3 - x1) / (dt1 + dt2) + (x3 - x2) / dt2) * dt1
-        c2 = -3 * x1 + 3 * x2 - 2 * t1 - t2; c3 = 2 * x1 - 2 * x2 + t1 + t2
-        out.append(x1 + t1 * w + c2 * w * w + c3 * w * w * w)
-    return out
+# ---------- roads: rounded-rectangle loop + side exits (mirrors tower-view.js) ----------
+RX0, RX1, RZ0, RZ1, RR, RW = -20.0, 20.0, -1.5, 9.5, 4.0, 2.6
+EXIT_Z = (RZ0 + RZ1) / 2
 
-SAMPLES_XZ = [catmull(r, i / 2400) for r in ROUTES for i in range(2400)]
-def clear_of(x, z, r): return all((p[0]-x)**2 + (p[1]-z)**2 > r * r for p in SAMPLES_XZ)
+def rounded_rect(x0, x1, z0, z1, r, step=0.25):
+    pts = []
+    def line(ax, az, bx, bz):
+        n = max(1, round(math.hypot(bx - ax, bz - az) / step))
+        pts.extend((ax + (bx - ax) * i / n, az + (bz - az) * i / n) for i in range(n))
+    def arc(cx, cz, a0):
+        n = round(r * math.pi / 2 / step)
+        pts.extend((cx + r * math.cos(a0 + math.pi / 2 * i / n), cz + r * math.sin(a0 + math.pi / 2 * i / n)) for i in range(n))
+    line(x0 + r, z0, x1 - r, z0); arc(x1 - r, z0 + r, -math.pi / 2)
+    line(x1, z0 + r, x1, z1 - r); arc(x1 - r, z1 - r, 0)
+    line(x1 - r, z1, x0 + r, z1); arc(x0 + r, z1 - r, math.pi / 2)
+    line(x0, z1 - r, x0, z0 + r); arc(x0 + r, z0 + r, math.pi)
+    return pts
+
+def strip(pts, o0, o1, z0, z1, mat, closed=True):
+    """Solid band between lateral offsets o0..o1 (three.js xz) along a polyline."""
+    n = len(pts); bm = bmesh.new(); rings = []
+    for i in range(n):
+        a = pts[i - 1] if (closed or i > 0) else pts[i]
+        b = pts[(i + 1) % n] if (closed or i < n - 1) else pts[i]
+        tx, tz = b[0] - a[0], b[1] - a[1]; L = math.hypot(tx, tz) or 1
+        nx, nz = -tz / L, tx / L
+        x, z = pts[i]
+        rings.append([bm.verts.new((x + nx * o, -(z + nz * o), h)) for o, h in ((o0, z0), (o1, z0), (o1, z1), (o0, z1))])
+    for i in range(n if closed else n - 1):
+        A, B = rings[i], rings[(i + 1) % n]
+        for k in range(4): bm.faces.new((A[k], B[k], B[(k + 1) % 4], A[(k + 1) % 4]))
+    if not closed: bm.faces.new(rings[0]); bm.faces.new(rings[-1][::-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return finish(new_obj(bm, 'road'), mat)
+
+def runs(pts, keep):
+    """Split a closed polyline into open runs where keep(x, z) holds."""
+    out, cur = [], []
+    start = next((i for i, p in enumerate(pts) if not keep(*p)), None)
+    order = pts if start is None else pts[start:] + pts[:start]
+    for p in order:
+        if keep(*p): cur.append(p)
+        elif cur: out.append(cur); cur = []
+    if cur: out.append(cur)
+    return out if start is not None else [pts]
+
+def dashes(pts, o, w, z, on=0.7, off=0.6):
+    acc, cur, draw = 0.0, [pts[0]], True
+    for a, b in zip(pts, pts[1:] + pts[:1]):
+        acc += math.hypot(b[0] - a[0], b[1] - a[1]); cur.append(b)
+        if acc >= (on if draw else off):
+            if draw and len(cur) > 1: strip(cur, o - w / 2, o + w / 2, z, z + 0.006, 'Paint', closed=False)
+            acc, cur, draw = 0.0, [b], not draw
+
+def roads():
+    loop = rounded_rect(RX0, RX1, RZ0, RZ1, RR)
+    strip(loop, -RW / 2, RW / 2, 0, 0.03, 'Road')
+    def gap(x, z):                                   # openings for the exits and the dock driveway
+        if abs(z - EXIT_Z) < 1.6 and abs(abs(x) - 20) < 0.5: return False
+        if abs(x) < 4.2 and z < RZ0 + 0.5: return False
+        return True
+    for o in (-1.12, 1.12):
+        for r in runs(loop, gap if o < 0 else (lambda x, z: True)):
+            strip(r, o - 0.035, o + 0.035, 0.03, 0.036, 'Paint', closed=False)
+    dashes(loop, 0, 0.07, 0.03)
+    for sx in (-1, 1):                               # side exits running off-scene
+        line = [(sx * (20 + i * 0.5), EXIT_Z) for i in range(0, 121)]
+        if sx < 0: line = line[::-1]
+        strip(line, -RW / 2, RW / 2, 0, 0.029, 'Road', closed=False)
+        edge = [p for p in line if abs(p[0]) > 21.3]
+        for o in (-1.12, 1.12):
+            strip(edge, o - 0.035, o + 0.035, 0.029, 0.035, 'Paint', closed=False)
+        dashes(edge, 0, 0.07, 0.029)
+    # dock driveway: from the loop's outer edge to the dock apron
+    box('Pad', -4.0, 4.0, -(RZ0 - RW / 2 + 0.05), -(-5.4), 0, 0.022, 0.01, 2)
+
+ROAD_PTS = rounded_rect(RX0, RX1, RZ0, RZ1, RR, 0.5) + [(x, EXIT_Z) for x in range(-60, -19)] + [(x, EXIT_Z) for x in range(20, 61)]
+def clear_of(x, z, r): return all((p[0]-x)**2 + (p[1]-z)**2 > r * r for p in ROAD_PTS)
+
+def sphere(mat, r, loc, sz=1.0):
+    bm = bmesh.new(); bmesh.ops.create_uvsphere(bm, u_segments=28, v_segments=16, radius=r)
+    for v in bm.verts: v.co.z *= sz
+    o = new_obj(bm); o.location = loc
+    return finish(o, mat)
+
+def pine(px, pz, s):
+    cyl('Shade', 0.07 * s, 0.4 * s, (px, -pz, 0.2 * s), 12)
+    for r, hh, z0 in ((0.66, 0.85, 0.3), (0.52, 0.72, 0.74), (0.36, 0.62, 1.12)):
+        cyl('Porcelain', r * s, hh * s, (px, -pz, (z0 + hh / 2) * s), 32, 0.03, r2=0.05 * s)
+
+def round_tree(px, pz, s):
+    cyl('Shade', 0.07 * s, 0.75 * s, (px, -pz, 0.375 * s), 12)
+    sphere('Porcelain', 0.56 * s, (px, -pz, 1.1 * s), 1.12)
 
 def grove(x, z, n, seed=0):
     for i in range(n):
         a = i * 2.39996 + seed; r = 0.9 * math.sqrt(i + 0.5)
         px, pz = x + math.cos(a) * r * 1.4, z + math.sin(a) * r * 1.4
-        if not clear_of(px, pz, 2.2): continue
-        s = 0.75 + ((i * 37) % 10) / 22
-        cyl('Porcelain', 0.6 * s, 1.8 * s, (px, -pz, 0.9 * s), 32, 0.0, r2=0.02)
+        if not clear_of(px, pz, 2.4): continue
+        s = 0.8 + ((i * 37) % 10) / 24
+        (pine if (i + seed) % 3 else round_tree)(px, pz, s)
 
 # ---------- layout: one distribution centre on a short loop ----------
 warehouse(0, -10.5, 0, 14, 6)                           # docks face the route (+z)
 office(12.5, -10.5, 3, 3, 2.6)
 office(9, 4, 3, 3, 2.6)                                 # yard office inside the loop
+roads()
+guard_booth(-5.6, -4.2)
+fence([(-10, -6), (-10, -14), (10, -14), (10, -6)])
 grove(-14, -12, 5); grove(18, -13, 4, 1); grove(-6, 4, 3, 2); grove(27, 2, 4, 3)
 
 # trailers backed into docks 2 and 5, using the dry van from trucks.glb

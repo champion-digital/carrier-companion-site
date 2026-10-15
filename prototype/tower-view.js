@@ -139,9 +139,20 @@ function buildTrailer(navy) {
 }
 
 // ---------- routes ----------
-const ROUTES = [
-  [[-16,-1],[-6,-1.5],[6,-1.5],[16,-1],[21,3],[18,8],[6,9.5],[-6,9.5],[-18,8],[-21,3]]
-].map(pts => new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 0, z)), true, 'centripetal', 0.5));
+// Road: rounded rectangle, centre x ±20, z -1.5..9.5, corner radius 4, 2.6 wide.
+// Trucks keep to the right-hand lane, 0.65 inside the centre line (mirrors models/set.py).
+function roundedRect(x0, x1, z0, z1, r, step = 0.5) {
+  const pts = [], line = (ax, az, bx, bz) => { const n = Math.max(1, Math.round(Math.hypot(bx - ax, bz - az) / step)); for (let i = 0; i < n; i++) pts.push([ax + (bx - ax) * i / n, az + (bz - az) * i / n]); };
+  const arc = (cx, cz, a0) => { const n = Math.round(r * Math.PI / 2 / step); for (let i = 0; i < n; i++) { const a = a0 + (Math.PI / 2) * i / n; pts.push([cx + r * Math.cos(a), cz + r * Math.sin(a)]); } };
+  line(x0 + r, z0, x1 - r, z0); arc(x1 - r, z0 + r, -Math.PI / 2);
+  line(x1, z0 + r, x1, z1 - r); arc(x1 - r, z1 - r, 0);
+  line(x1 - r, z1, x0 + r, z1); arc(x0 + r, z1 - r, Math.PI / 2);
+  line(x0, z1 - r, x0, z0 + r); arc(x0 + r, z0 + r, Math.PI);
+  return pts;
+}
+const LANE = 0.65;
+const ROUTES = [roundedRect(-20 + LANE, 20 - LANE, -1.5 + LANE, 9.5 - LANE, 4 - LANE)]
+  .map(pts => new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 0, z)), true, 'centripetal', 0.5));
 
 const routeMat = new THREE.ShaderMaterial({
   transparent: true, depthWrite: false,
@@ -151,13 +162,9 @@ const routeMat = new THREE.ShaderMaterial({
     uniform float time; varying vec2 vUv;
     void main(){
       float d = abs(vUv.y - 0.5) * 2.0;                       // 0 centre, 1 edge
-      float body = smoothstep(1.0, 0.78, d);                    // soft frosted edge
-      float rim = smoothstep(0.62, 0.88, d) * smoothstep(1.0, 0.9, d);
-      float core = exp(-pow(d / 0.09, 2.0));
-      vec3 sky = vec3(0.155, 0.672, 1.0);
-      vec3 col = mix(vec3(0.74, 0.90, 1.0), vec3(1.0), rim * 0.7);
-      col += sky * core * 0.9;
-      gl_FragColor = vec4(col, body * 0.5 + core * 0.4);
+      float line = smoothstep(1.0, 0.55, d);
+      vec3 col = mix(vec3(0.43, 0.84, 1.0), vec3(0.85, 0.96, 1.0), smoothstep(0.5, 0.0, d));
+      gl_FragColor = vec4(col, line * 0.9);
     }`
 });
 function ribbon(curve, width, y, mat) {
@@ -175,7 +182,7 @@ function ribbon(curve, width, y, mat) {
   geo.setIndex(idx); geo.computeVertexNormals();
   return new THREE.Mesh(geo, mat);
 }
-ROUTES.forEach((c, i) => { const r = ribbon(c, 1.7, 0.05 + i * 0.01, routeMat); r.renderOrder = 1; scene.add(r); });
+ROUTES.forEach((c, i) => { const r = ribbon(c, 0.16, 0.045 + i * 0.01, routeMat); r.renderOrder = 1; scene.add(r); });
 
 // ---------- world: hub depot, parked trailers, building clusters, trees ----------
 const routeSamples = ROUTES.flatMap(c => c.getSpacedPoints(300));
@@ -233,7 +240,8 @@ new GLTFLoader().load(new URL('models/set.glb', import.meta.url).href, (gltf) =>
   const ao = loadTex('set-ao.jpg', false);
   const withAo = (m) => { const c = m.clone(); c.aoMap = ao; c.aoMapIntensity = 1; return c; };
   M.pad = new THREE.MeshPhysicalMaterial({ color: 0xE4E9EF, roughness: 0.9 });
-  const map = { Porcelain: withAo(M.porcelain), Shade: withAo(M.porcelainShade), Window: withAo(new THREE.MeshPhysicalMaterial({ color: 0xA7B9CC, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.15 })), Dock: withAo(M.dock), DockGlow: M.dockGlow, Pad: withAo(M.pad) };
+  const map = { Porcelain: withAo(M.porcelain), Shade: withAo(M.porcelainShade), Window: withAo(new THREE.MeshPhysicalMaterial({ color: 0xA7B9CC, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.15 })), Dock: withAo(M.dock), DockGlow: M.dockGlow, Pad: withAo(M.pad),
+    Road: withAo(new THREE.MeshPhysicalMaterial({ color: 0xD5DBE2, roughness: 0.92 })), Paint: withAo(new THREE.MeshPhysicalMaterial({ color: 0xFFFFFF, roughness: 0.6 })) };
   gltf.scene.traverse(m => {
     if (!m.isMesh) return;
     m.material = map[m.material.name] || map.Porcelain;
@@ -250,45 +258,30 @@ new GLTFLoader().load(new URL('models/set.glb', import.meta.url).href, (gltf) =>
 // ---------- fleet ----------
 const STATUS = { transit: ['In transit', COL.ok, '#E3F6EA', '#15803D'], idle: ['Idle', COL.warn, '#FEF3DC', '#B45309'], delivered: ['Delivered', '#6ED6FF', '#E1F5FF', '#0E79B2'], late: ['Running late', COL.alert, '#FBE5E7', '#B91C1C'] };
 const FLEET = [
-  { name: 'Asset 4', trip: 4417, driver: 'M. Bidamou', from: 'Salt Lake City, UT', to: 'North Platte, NE', route: 0, u: 0.62, navy: true },
-  { name: 'Asset 3', trip: 4416, driver: 'R. Alvarez', from: 'Atlanta, GA', to: 'Memphis, TN', route: 0, u: 0.88 },
-  { name: 'Asset 2', trip: 4418, driver: 'K. Nguyen', from: 'Evanston, WY', to: 'Rawlins, WY', route: 0, u: 0.14 },
-  { name: 'Asset 1', trip: 4419, driver: 'D. Brooks', from: 'Dallas, TX', to: 'Tulsa, OK', route: 0, u: 0.38 }
+  { name: 'Asset 4', trip: 4417, driver: 'M. Bidamou', from: 'Salt Lake City, UT', to: 'North Platte, NE', route: 0, u: 0.55, navy: true },
+  { name: 'Asset 3', trip: 4416, driver: 'R. Alvarez', from: 'Atlanta, GA', to: 'Memphis, TN', route: 0, u: 0.8 },
+  { name: 'Asset 2', trip: 4418, driver: 'K. Nguyen', from: 'Evanston, WY', to: 'Rawlins, WY', route: 0, u: 0.05 },
+  { name: 'Asset 1', trip: 4419, driver: 'D. Brooks', from: 'Dallas, TX', to: 'Tulsa, OK', route: 0, u: 0.3 }
 ];
 // geometry constants match prototype/models/trucks.glb (built by models/trucks.py)
 const KINGPIN = 0.98, TRAILER_AXLE = KINGPIN + 2.8, SPEED = 3.2; // world units / s
 
-function haloTexture() {
-  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
-  const gr = g.createRadialGradient(64, 64, 8, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.55, 'rgba(255,255,255,.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c);
-}
-const haloTex = haloTexture();
-const pinMat = {
-  transit: new THREE.MeshStandardMaterial({ color: 0x22C55E, emissive: 0x22C55E, emissiveIntensity: 0.35, roughness: 0.4 }),
-  delivered: new THREE.MeshStandardMaterial({ color: 0x6ED6FF, emissive: 0x6ED6FF, emissiveIntensity: 0.5, roughness: 0.4 }),
-  idle: new THREE.MeshStandardMaterial({ color: 0xF9AC24, emissive: 0xF9AC24, emissiveIntensity: 0.35, roughness: 0.4 }),
-  late: new THREE.MeshStandardMaterial({ color: 0xD22533, emissive: 0xD22533, emissiveIntensity: 0.3, roughness: 0.4 })
-};
-const hexGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.14, 6), hexBase = new THREE.CylinderGeometry(0.58, 0.58, 0.1, 6);
+const STATUS_COL = { transit: '#22C55E', delivered: '#6ED6FF', idle: '#F9AC24', late: '#D22533' };
 const pickables = [];
 
 const trucks = FLEET.map((f, i) => {
   const tractor = buildTractor(!!f.navy), trailer = buildTrailer(!!f.navy);
   scene.add(tractor, trailer);
-  const halo = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 6.4), new THREE.MeshBasicMaterial({ map: haloTex, color: COL.sky, transparent: true, opacity: 0, depthWrite: false }));
-  halo.rotation.x = -Math.PI / 2; halo.position.y = 0.09; scene.add(halo);
-  const pin = new THREE.Group();
-  const base = new THREE.Mesh(hexBase, M.porcelain); base.castShadow = true;
-  const top = new THREE.Mesh(hexGeo, pinMat.transit); top.position.y = 0.1;
-  pin.add(base, top); pin.userData.top = top; scene.add(pin);
+  const dot = document.createElement('button');
+  dot.className = 'tv-dot'; dot.type = 'button'; dot.setAttribute('aria-label', `Track ${f.name}`);
+  dot.addEventListener('click', () => select(i)); stage.appendChild(dot);
   const curve = ROUTES[f.route], len = curve.getLength();
-  return { ...f, i, tractor, trailer, halo, pin, pinStatus: 'transit', curve, len, status: 'transit', dwell: 0, tripStart: f.u, progress: 0.35 + i * 0.08, note: '' };
+  return { ...f, i, tractor, trailer, dot, dotStatus: '', curve, len, status: 'transit', dwell: 0, tripStart: f.u, progress: 0.35 + i * 0.08, note: '' };
 });
 
 function collectPickables() {
   pickables.length = 0;
-  trucks.forEach(t => [t.pin, t.tractor, t.trailer].forEach(o => o.traverse(m => { if (m.isMesh) { m.userData.truck = t.i; pickables.push(m); } })));
+  trucks.forEach(t => [t.tractor, t.trailer].forEach(o => o.traverse(m => { if (m.isMesh) { m.userData.truck = t.i; pickables.push(m); } })));
 }
 collectPickables();
 
@@ -328,12 +321,11 @@ function place(t) {
   t.curve.getPointAt(ub, tmpB);
   const th = Math.atan2(-(tmpK.z - tmpB.z), tmpK.x - tmpB.x);
   t.trailer.position.copy(tmpK); t.trailer.rotation.y = th;
-  t.halo.position.set((tmpA.x + tmpB.x) / 2, 0.09, (tmpA.z + tmpB.z) / 2);
 }
 trucks.forEach(place);
 
 // trip events: deliveries at fixed stops, occasional idle
-const STOPS = [[0.12, 0.6]];
+const STOPS = [[0.176, 0.676]];
 function stepTruck(t, dt) {
   if (t.dwell > 0) {
     t.dwell -= dt;
@@ -451,9 +443,10 @@ function select(i) {
   renderCard(trucks[i], true);
 }
 
+const TRIP_MINS = [190, 95, 140, 62]; // demo trip lengths per truck
 function fmtEta(t) {
   if (t.status === 'delivered') return 'Arrived';
-  const mins = Math.max(4, Math.round((1 - t.progress) * 180));
+  const mins = Math.max(4, Math.round((1 - t.progress) * TRIP_MINS[t.i]));
   return mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
 }
 function renderCard(t) {
@@ -465,7 +458,7 @@ function renderCard(t) {
   $('c-bar').style.width = Math.round(t.progress * 100) + '%';
   $('c-eta').textContent = fmtEta(t);
   $('c-driver').textContent = t.driver;
-  $('c-rem').textContent = t.status === 'delivered' ? '0 mi' : Math.round((1 - t.progress) * 420) + ' mi';
+  $('c-rem').textContent = t.status === 'delivered' ? '0 mi' : Math.round((1 - t.progress) * TRIP_MINS[t.i] * 0.93) + ' mi';
   $('c-speed').textContent = t.status === 'transit' ? (56 + (t.i * 3) % 9) + ' mph' : '0 mph';
   $('c-note').textContent = t.note;
 }
@@ -480,6 +473,15 @@ function renderList() {
 
 const proj = new THREE.Vector3();
 let cardX = 0, cardY = 0;
+function positionDots() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  for (const t of trucks) {
+    if (t.dotStatus !== t.status) { t.dot.style.setProperty('--c', STATUS_COL[t.status]); t.dotStatus = t.status; }
+    t.dot.classList.toggle('sel', t.i === selected);
+    proj.copy(t.tractor.position); proj.y += 2.1; proj.project(camera);
+    t.dot.style.transform = `translate(${(proj.x * 0.5 + 0.5) * w}px, ${(-proj.y * 0.5 + 0.5) * h}px)`;
+  }
+}
 function positionCard() {
   if (selected < 0) return;
   const t = trucks[selected];
@@ -507,14 +509,6 @@ function frame(dt) {
   simTime += dt;
   if (!reduceMotion) for (const t of trucks) { stepTruck(t, dt); place(t); }
 
-  for (const t of trucks) {
-    const pulse = t.i === selected ? 0.55 + Math.sin(simTime * 3) * 0.12 : 0;
-    t.halo.material.opacity += (pulse - t.halo.material.opacity) * 0.1;
-    if (t.pinStatus !== t.status) { t.pin.userData.top.material = pinMat[t.status]; t.pinStatus = t.status; }
-    t.pin.rotation.y = simTime * 0.6 + t.i;
-    t.pin.position.set(t.tractor.position.x, 2.5 + Math.sin(simTime * 2 + t.i) * 0.08, t.tractor.position.z);
-  }
-
   if (selected >= 0) rig.goal.target.lerp(trucks[selected].tractor.position, 0.12);
   const k = 1 - Math.pow(0.0025, dt);
   rig.az += (rig.goal.az - rig.az) * k; rig.pol += (rig.goal.pol - rig.pol) * k * 0.8;
@@ -523,7 +517,7 @@ function frame(dt) {
 
   uiTimer += dt;
   if (uiTimer > 0.25) { uiTimer = 0; renderList(); if (selected >= 0) renderCard(trucks[selected]); }
-  positionCard();
+  positionCard(); positionDots();
   grain.uniforms.time.value = simTime % 100;
   routeMat.uniforms.time.value = simTime;
   let focus = 0.46;
