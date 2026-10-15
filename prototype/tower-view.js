@@ -59,17 +59,17 @@ function studioEnv() {
   return pmrem.fromScene(s, 0.02).texture;
 }
 scene.environment = studioEnv();
-scene.environmentIntensity = 0.95;
+scene.environmentIntensity = 0.8;
 
 // ---------- lights ----------
 const hemi = new THREE.HemisphereLight(0xffffff, 0xB7CDE2, 0.18);
 scene.add(hemi);
-const key = new THREE.DirectionalLight(0xffffff, 1.25);
+const key = new THREE.DirectionalLight(0xffffff, 1.6);
 key.position.set(-30, 45, -32);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 Object.assign(key.shadow.camera, { left: -70, right: 70, top: 50, bottom: -50, near: 1, far: 180 });
-key.shadow.radius = 14; key.shadow.blurSamples = 24; key.shadow.bias = -0.0004;
+key.shadow.radius = 7; key.shadow.blurSamples = 20; key.shadow.bias = -0.0004;
 scene.add(key);
 const fill = new THREE.DirectionalLight(0xDDEFFF, 0.0);
 fill.position.set(40, 20, -30);
@@ -85,12 +85,13 @@ function radialTexture(inner, outer) {
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshBasicMaterial({ map: radialTexture('#FDFEFF', '#EDF1F5'), fog: true, toneMapped: false }));
 ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
-const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.ShadowMaterial({ color: 0x2A4A78, opacity: 0.3 }));
-shadowCatcher.rotation.x = -Math.PI / 2; shadowCatcher.position.y = 0.04; // above road + paint so truck shadows land on them shadowCatcher.receiveShadow = true;
+const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.ShadowMaterial({ color: 0x24406E, opacity: 0.45 }));
+// sits above road + paint so truck shadows land on them
+shadowCatcher.rotation.x = -Math.PI / 2; shadowCatcher.position.y = 0.04; shadowCatcher.receiveShadow = true;
 scene.add(shadowCatcher);
 
 // ---------- materials ----------
-const clay = (color) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.62, specularIntensity: 0.4, sheen: 0.35, sheenRoughness: 0.7, sheenColor: 0xffffff });
+const clay = (color) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.62, specularIntensity: 0.4, sheen: 0.15, sheenRoughness: 0.7, sheenColor: 0xffffff });
 const M = {
   porcelain: clay(COL.porcelain),
   porcelainShade: clay(COL.porcelainShade),
@@ -255,7 +256,7 @@ new GLTFLoader().load(new URL('models/set.glb', import.meta.url).href, (gltf) =>
   const light = loadTex('set-light.jpg', false);   // sun + sky + bounce, normalised (open ground = 1), stored at 1/1.5
   const baked = (hex) => new THREE.MeshBasicMaterial({ color: hex, lightMap: light, lightMapIntensity: Math.PI * 1.5, toneMapped: false });
   const map = { Porcelain: baked(0xEEF1F5), Shade: baked(0xDDE3EA), Window: baked(0xAEBFD1), Dock: baked(0xD5DCE4), DockGlow: M.dockGlow,
-    Pad: baked(0xE4E9EF), Road: baked(0xD6DCE3), Paint: baked(0xFFFFFF) };
+    Pad: baked(0xE4E9EF), Road: baked(0xD6DCE3), Paint: new THREE.MeshBasicMaterial({ color: 0xF7F9FB, toneMapped: false }) };
   gltf.scene.traverse(m => {
     if (!m.isMesh) return;
     m.material = map[m.material.name] || map.Porcelain;
@@ -299,6 +300,21 @@ function collectPickables() {
 }
 collectPickables();
 
+// soft contact shadow under each body: grounds the trucks the way a path tracer would
+const contactMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false,
+  uniforms: { color: { value: new THREE.Color(0x1C2E52) }, strength: { value: 0.42 } },
+  vertexShader: 'varying vec2 vP; uniform vec2 size; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform vec3 color; uniform float strength; varying vec2 vP; uniform vec2 size;
+    void main(){ vec2 q = abs(vP) - (size * 0.5 - 0.5); float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+      gl_FragColor = vec4(color, (1.0 - smoothstep(-0.3, 0.5, d)) * strength); }`
+});
+function contact(w, d, cx) {
+  const m = contactMat.clone(); m.uniforms.size = { value: new THREE.Vector2(w, d) };
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(w, d), m);
+  p.rotation.x = -Math.PI / 2; p.position.set(cx, 0.042, 0); p.renderOrder = 0; return p;
+}
+
 // swap the placeholder trucks for the modeled ones once loaded
 function skin(src, navy) {
   const g = src.clone(true);
@@ -317,8 +333,8 @@ new GLTFLoader().load(new URL('models/trucks.glb', import.meta.url).href, (gltf)
   const lib = {}; gltf.scene.children.forEach(c => { lib[c.name] = c; });
   if (!lib.Tractor || !lib.Trailer || !lib.TrailerGlass) return;
   trucks.forEach(t => {
-    t.tractor.clear(); t.tractor.add(skin(lib.Tractor, !!t.navy));
-    t.trailer.clear(); t.trailer.add(skin(t.navy ? lib.TrailerGlass : lib.Trailer, !!t.navy));
+    t.tractor.clear(); t.tractor.add(skin(lib.Tractor, !!t.navy), contact(3.0, 1.15, -0.07));
+    t.trailer.clear(); t.trailer.add(skin(t.navy ? lib.TrailerGlass : lib.Trailer, !!t.navy), contact(3.95, 1.15, -1.57));
   });
   collectPickables();
 });

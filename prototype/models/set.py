@@ -154,7 +154,7 @@ def light_pole(x, y, f, dirx=1):
 def guard_booth(x, z, rot=0.0):
     f = frame(x, z, rot)
     box('Porcelain', -0.5, 0.5, -0.5, 0.5, 0, 0.12, 0.02, 2, f)
-    box('Window', -0.4, 0.4, -0.4, 0.4, 0.12, 0.82, 0, 0, f)
+    box('Window', -0.38, 0.38, -0.38, 0.38, 0.4, 0.82, 0, 0, f)                           # glass sits on the panel, no overlap
     for cx in (-0.4, 0.4):
         for cy in (-0.4, 0.4):
             box('Porcelain', cx - 0.05, cx + 0.05, cy - 0.05, cy + 0.05, 0.12, 0.82, 0.01, 1, f)
@@ -390,7 +390,10 @@ scene.cycles.samples = SAMPLES * 8
 img = bake_target(setobj, 'set_light', AO_RES, AO_RES)
 bpy.ops.object.bake(type='DIFFUSE')
 lm = to_np(img)[..., :3] / G0
+empty = lm.sum(axis=2) < 1e-6
+lm[empty] = 0.85                                            # unused atlas space: light, so filtering never pulls in black
 lm = blur(lm, 2)                                            # light smoothing; island margins keep it from bleeding
+lm = np.maximum(lm, 0.42)                                   # sky + bounce never lets a visible face go black
 save(lm / LM_SCALE, 'set_light', os.path.join(OUT, 'set-light.jpg'))
 print('LIGHT p5/p50/p95', [float(np.percentile(lm[..., 1][lm[..., 1] > 0.01], q)) for q in (5, 50, 95)])
 
