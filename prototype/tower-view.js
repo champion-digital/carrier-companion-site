@@ -19,7 +19,7 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
 
 // ---------- palette ----------
 const COL = {
-  bg: 0xEDF1F5, porcelain: 0xF1F4F7, porcelainShade: 0xE2E8EE, tire: 0xD6DCE4, navy: 0x0A1A2F, navyTire: 0x1A2433,
+  bg: 0xEDF1F5, porcelain: 0xF1F4F7, porcelainShade: 0xE2E8EE, tire: 0xD6DCE4, navy: 0x232C5E, navyTire: 0x1A2433,
   sky: 0x6ED6FF, glass: 0xE6F6FF, ok: '#22C55E', warn: '#F9AC24', alert: '#D22533'
 };
 
@@ -87,7 +87,7 @@ const M = {
   navyGlass: new THREE.MeshPhysicalMaterial({ color: 0x1B2A40, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.1 }),
   window: new THREE.MeshPhysicalMaterial({ color: 0xC9D2DC, roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.3 }),
   dock: new THREE.MeshStandardMaterial({ color: 0xDCE3EA, roughness: 0.9 }),
-  dockGlow: new THREE.MeshStandardMaterial({ color: 0xBFEBFF, emissive: COL.sky, emissiveIntensity: 1.6, roughness: 0.4 }),
+  dockGlow: new THREE.MeshStandardMaterial({ color: 0xBFEBFF, emissive: COL.sky, emissiveIntensity: 0.7, roughness: 0.4 }),
   routeBody: new THREE.MeshStandardMaterial({ color: 0xD8F1FF, emissive: COL.sky, emissiveIntensity: 0.22, roughness: 0.35, transparent: true, opacity: 0.78 }),
   routeCore: new THREE.MeshBasicMaterial({ color: new THREE.Color(COL.sky).multiplyScalar(1.6), transparent: true, opacity: 0.9 })
 };
@@ -155,11 +155,10 @@ const routeMat = new THREE.ShaderMaterial({
       float body = smoothstep(1.0, 0.78, d);                    // soft frosted edge
       float rim = smoothstep(0.62, 0.88, d) * smoothstep(1.0, 0.9, d);
       float core = exp(-pow(d / 0.09, 2.0));
-      float flow = 0.85 + 0.15 * sin(vUv.x * 0.35 - time * 1.6);
       vec3 sky = vec3(0.155, 0.672, 1.0);
       vec3 col = mix(vec3(0.74, 0.90, 1.0), vec3(1.0), rim * 0.7);
-      col += sky * core * 1.7 * flow;
-      gl_FragColor = vec4(col, body * 0.6 + core * 0.35);
+      col += sky * core * 0.9;
+      gl_FragColor = vec4(col, body * 0.5 + core * 0.4);
     }`
 });
 function ribbon(curve, width, y, mat) {
@@ -366,7 +365,8 @@ function stepTruck(t, dt) {
 }
 
 // ---------- post ----------
-const composer = new EffectComposer(renderer);
+// MSAA render target: without it every thin edge (grilles, ribs, mirrors) shimmers as trucks move
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
 composer.addPass(new RenderPass(scene, camera));
 let gtao = null;
 try {
@@ -377,16 +377,13 @@ try {
   composer.addPass(gtao);
 } catch (e) { gtao = null; }
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.28, 0.3, 0.95);
-composer.addPass(bloom);
 const tiltH = new ShaderPass(HorizontalTiltShiftShader), tiltV = new ShaderPass(VerticalTiltShiftShader);
-composer.addPass(tiltH); composer.addPass(tiltV);
 composer.addPass(new OutputPass());
 const grain = new ShaderPass({
   uniforms: { tDiffuse: { value: null }, time: { value: 0 }, amount: { value: 0.022 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
   fragmentShader: 'uniform sampler2D tDiffuse; uniform float time; uniform float amount; varying vec2 vUv; float h(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233))+time)*43758.5453); } void main(){ vec4 c=texture2D(tDiffuse,vUv); c.rgb+= (h(vUv*1000.0)-0.5)*amount; gl_FragColor=c; }'
 });
-composer.addPass(grain);
 
 // ---------- camera rig ----------
 const rig = {
