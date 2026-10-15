@@ -73,7 +73,16 @@
       <div class="tv-note" id="c-note"></div>
     </div>
 
-    <div class="tv-hint" id="tv-hint">Click a truck to track it</div>
+    <div class="tv-hint" id="tv-hint" aria-hidden="true">
+      <span class="tv-hint-item" data-hint="track">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 3.5l12.5 6.2-5.6 1.6-2.1 5.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12.9 11.3l5.2 5.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <span id="tv-hint-track">Click a truck or asset to track it</span>
+      </span>
+      <span class="tv-hint-item" data-hint="rotate">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M19.6 3.8v4.1h-4.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Drag to rotate the view</span>
+      </span>
+    </div>
     <div class="tv-demo">Demo data</div>
   </section>
 </main>

@@ -508,7 +508,7 @@ canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.client
 canvas.addEventListener('pointermove', e => {
   if (drag) {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; canvas.classList.add('drag'); }
+    if (Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; canvas.classList.add('drag'); hintDone('rotate'); }
     rig.goal.az = THREE.MathUtils.clamp(drag.az - dx * 0.004, -1.25, 0.05);
     rig.goal.pol = THREE.MathUtils.clamp(drag.pol - dy * 0.003, 0.55, 1.15);
   } else hover(e);
@@ -537,9 +537,17 @@ list.addEventListener('click', e => { const li = e.target.closest('li'); if (li)
 $('tv-close').addEventListener('click', () => select(-1));
 window.addEventListener('keydown', e => { if (e.key === 'Escape') select(-1); });
 
+// hint: each part retires once it has been tried; the pill fades when nothing is left to teach
+const hintLeft = new Set(narrow ? ['track'] : ['track', 'rotate']);
+if (narrow || window.matchMedia('(pointer: coarse)').matches) $('tv-hint-track').textContent = narrow ? 'Tap a truck to track it' : 'Tap a truck or asset to track it';
+function hintDone(k) {
+  if (!hintLeft.delete(k)) return;
+  $('tv-hint').querySelector(`[data-hint="${k}"]`).classList.add('done');
+  if (!hintLeft.size) $('tv-hint').classList.add('gone');
+}
 function select(i) {
   selected = i;
-  $('tv-hint').classList.add('gone');
+  if (i >= 0) hintDone('track');
   list.querySelectorAll('li').forEach(li => li.classList.toggle('sel', +li.dataset.i === i));
   if (i < 0) { card.hidden = true; rig.goal.dist = HOME.dist; rig.goal.pol = HOME.pol; rig.goal.target.set(HOME.x, 0, HOME.z); return; }
   if (narrow) stage.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'end' });
