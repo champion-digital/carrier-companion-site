@@ -51,7 +51,7 @@ scene.environmentIntensity = 0.32;
 const hemi = new THREE.HemisphereLight(0xffffff, 0xB7CDE2, 0.75);
 scene.add(hemi);
 const key = new THREE.DirectionalLight(0xffffff, 1.65);
-key.position.set(-30, 60, 22);
+key.position.set(-30, 45, -32);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 Object.assign(key.shadow.camera, { left: -70, right: 70, top: 50, bottom: -50, near: 1, far: 180 });
@@ -71,7 +71,7 @@ function radialTexture(inner, outer) {
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshBasicMaterial({ map: radialTexture('#FDFEFF', '#EDF1F5'), fog: true, toneMapped: false }));
 ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
-const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.ShadowMaterial({ color: 0x1E4A78, opacity: 0.3 }));
+const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.ShadowMaterial({ color: 0x1E4A78, opacity: 0.42 }));
 shadowCatcher.rotation.x = -Math.PI / 2; shadowCatcher.position.y = 0.01; shadowCatcher.receiveShadow = true;
 scene.add(shadowCatcher);
 
@@ -196,7 +196,6 @@ function addDepot() {
     const t = buildTrailer(false); t.rotation.y = -Math.PI / 2; t.position.set(-34.2 + i * 1.25, 0, -9.5); scene.add(t);
   }
 }
-addDepot();
 
 function warehouse(x, z, rot, len, docks) {
   const g = new THREE.Group();
@@ -218,14 +217,42 @@ function grove(x, z, n, seedOffset = 0) {
     const t = shadowed(new THREE.Mesh(coneGeo, M.porcelain)); t.scale.setScalar(s); t.position.set(px, 0.9 * s, pz); scene.add(t);
   }
 }
-office(-30, 10.5, 3.2, 3.2, 3.4);                     // hub office
-warehouse(6, -23.5, 0, 12, 5);                         // north distribution centre, docks facing the route
-office(17, -24, 3, 3, 2.6);
-warehouse(40.5, 2, -Math.PI / 2, 10, 4);               // east depot
-office(41, 12, 2.6, 2.6, 3.8);
-warehouse(5, 27.5, Math.PI, 12, 5);                    // south distribution centre
-office(10, -6, 2.6, 2.6, 2.2); office(13.5, -6.5, 2, 2, 3.2); // inner block
-grove(-14, -21, 5); grove(25, -23, 4, 1); grove(29, 24, 5, 2); grove(-19, 22, 4, 3); grove(45, -12, 4, 4); grove(-38, -4, 3, 5);
+function buildProceduralSet() {
+  addDepot();
+  office(-30, 10.5, 3.2, 3.2, 3.4);                     // hub office
+  warehouse(6, -23.5, 0, 12, 5);                         // north distribution centre, docks facing the route
+  office(17, -24, 3, 3, 2.6);
+  warehouse(40.5, 2, -Math.PI / 2, 10, 4);               // east depot
+  office(41, 12, 2.6, 2.6, 3.8);
+  warehouse(5, 27.5, Math.PI, 12, 5);                    // south distribution centre
+  office(10, -6, 2.6, 2.6, 2.2); office(13.5, -6.5, 2, 2, 3.2); // inner block
+  grove(-14, -21, 5); grove(25, -23, 4, 1); grove(29, 24, 5, 2); grove(-19, 22, 4, 3); grove(45, -12, 4, 4); grove(-38, -4, 3, 5);
+}
+
+// baked set: geometry + AO atlas + ground shadow texture, built by models/set.py
+const GROUND_BAKE = { cx: 4, cz: 0, w: 128, d: 96 };
+const texLoader = new THREE.TextureLoader();
+function loadTex(name, flipY) {
+  const t = texLoader.load(new URL('models/' + name, import.meta.url).href);
+  t.flipY = flipY; t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; return t;
+}
+new GLTFLoader().load(new URL('models/set.glb', import.meta.url).href, (gltf) => {
+  const ao = loadTex('set-ao.jpg', false);
+  const withAo = (m) => { const c = m.clone(); c.aoMap = ao; c.aoMapIntensity = 1; return c; };
+  M.pad = new THREE.MeshPhysicalMaterial({ color: 0xE4E9EF, roughness: 0.9 });
+  const map = { Porcelain: withAo(M.porcelain), Shade: withAo(M.porcelainShade), Window: withAo(new THREE.MeshPhysicalMaterial({ color: 0xA7B9CC, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.15 })), Dock: withAo(M.dock), DockGlow: M.dockGlow, Pad: withAo(M.pad) };
+  gltf.scene.traverse(m => {
+    if (!m.isMesh) return;
+    m.material = map[m.material.name] || map.Porcelain;
+    m.castShadow = false; m.receiveShadow = true;
+  });
+  scene.add(gltf.scene);
+  const shade = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_BAKE.w, GROUND_BAKE.d), new THREE.MeshBasicMaterial({
+    map: loadTex('ground-shadow.jpg', true), blending: THREE.MultiplyBlending, transparent: true, premultipliedAlpha: true, depthWrite: false, toneMapped: false
+  }));
+  shade.rotation.x = -Math.PI / 2; shade.position.set(GROUND_BAKE.cx, 0.004, GROUND_BAKE.cz); shade.renderOrder = -1;
+  scene.add(shade);
+}, undefined, () => buildProceduralSet());
 
 // ---------- fleet ----------
 const STATUS = { transit: ['In transit', COL.ok, '#E3F6EA', '#15803D'], idle: ['Idle', COL.warn, '#FEF3DC', '#B45309'], delivered: ['Delivered', '#6ED6FF', '#E1F5FF', '#0E79B2'], late: ['Running late', COL.alert, '#FBE5E7', '#B91C1C'] };
