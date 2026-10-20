@@ -223,6 +223,8 @@ a.ext:hover{color:var(--sky-deep)}
 .form{display:grid;gap:18px;max-width:640px}
 .form label{display:grid;gap:8px;font-size:14px;font-weight:600;color:var(--ink)}
 .form input,.form select,.form textarea{font:inherit;font-size:16px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--white);color:var(--ink);transition:border-color .2s ease,box-shadow .2s ease}
+.form select{appearance:none;-webkit-appearance:none;padding-right:52px;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 20px center;background-size:16px}
+.form textarea{resize:none}
 .form input:focus,.form select:focus,.form textarea:focus{outline:0;border-color:var(--sky-deep);box-shadow:0 0 0 4px rgba(56,189,248,.18)}
 .form .row{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 @media (max-width:560px){.form .row{grid-template-columns:1fr}}
