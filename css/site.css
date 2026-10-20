@@ -218,6 +218,9 @@ a.ext:hover{color:var(--sky-deep)}
 .page-hero{padding:clamp(56px,8vw,112px) 0 clamp(40px,5vw,64px)}
 .page-hero h1{max-width:14ch}
 .page-hero .lede{margin-top:24px}
+.page-hero.with-media .container{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:clamp(32px,5vw,72px);align-items:center}
+.page-hero.with-media .pic{aspect-ratio:4/3;height:auto}
+@media (max-width:900px){.page-hero.with-media .container{grid-template-columns:1fr}.page-hero.with-media .pic{aspect-ratio:16/10}}
 
 /* Form */
 .form{display:grid;gap:18px;max-width:640px}
