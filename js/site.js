@@ -7,6 +7,36 @@
   onScroll();window.addEventListener('scroll',onScroll,{passive:true});
 
 
+  const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Product moments: each plays its moment from the film once, as it scrolls into view, then rests on the finished frame
+  const moments=document.querySelectorAll('video.moment');
+  if(!reduce&&'IntersectionObserver' in window){
+    const mo=new IntersectionObserver(es=>es.forEach(e=>{if(!e.isIntersecting)return;const v=e.target;mo.unobserve(v);const p=v.play();if(p)p.catch(()=>{}); /* if playback is blocked the finished-frame poster stays */}),{threshold:.6});
+    moments.forEach(v=>mo.observe(v));
+  }
+
+  // Call-to-action loop: only runs while on screen, never for reduced motion
+  document.querySelectorAll('.cta-bg').forEach(v=>{
+    if(reduce){v.removeAttribute('autoplay');v.pause();return;}
+    if('IntersectionObserver' in window){new IntersectionObserver(([e])=>{if(e.isIntersecting){const p=v.play();if(p)p.catch(()=>{});}else v.pause();}).observe(v);}
+  });
+
+  // Film theater: custom play, native controls once playing
+  document.querySelectorAll('[data-theater]').forEach(t=>{
+    const v=t.querySelector('video'),b=t.querySelector('.theater-play');
+    b.addEventListener('click',()=>{v.controls=true;t.classList.add('playing');const p=v.play();if(p)p.catch(()=>{});});
+    v.addEventListener('ended',()=>{t.classList.remove('playing');v.controls=false;v.load();});
+  });
+
+  // No widows: keep the last two words of headings and paragraphs together
+  const glue=el=>{const tw=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);const ns=[];let n;while((n=tw.nextNode()))ns.push(n);
+    for(let i=ns.length-1;i>=0;i--){const t=ns[i].nodeValue;if(!/\S/.test(t))continue;const m=t.match(/^([\s\S]*\S)\s+(\S+\s*)$/);
+      if(m){ns[i].nodeValue=m[1]+'\u00a0'+m[2];return;}
+      for(let j=i-1;j>=0;j--){if(/\s$/.test(ns[j].nodeValue)){ns[j].nodeValue=ns[j].nodeValue.replace(/\s+$/,'\u00a0');return;}if(/\S/.test(ns[j].nodeValue))return;}
+      return;}};
+  document.querySelectorAll('h1,h2,h3,p,.faq .a,.person figcaption span').forEach(glue);
+
   // Reveal on scroll
   const els=document.querySelectorAll('.reveal');
   if('IntersectionObserver' in window){
