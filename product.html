@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,600;1,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/site.css?v=20261020c">
+<link rel="stylesheet" href="css/interactions.css?v=20261020j">
 <meta property="og:title" content="The product - Carrier Companion"><meta property="og:description" content="Dispatch, live tracking, rating, documents, invoicing and driver pay in one platform for the office that runs the fleet.">
 </head>
 <body>
@@ -41,9 +42,59 @@
 </div></section>
 <section class="section-tight"><div class="container">
 <div class="feature reveal"><div><div class="num">Live tracking</div><h3>Know before <em>it's asked.</em></h3><p>The first screen after login is every live asset on a map, with breadcrumb trails, ELD pings, fuel and asset condition. Business-health numbers and a live-events feed you program yourself sit alongside it. The customer calls, and the answer is already on the screen.</p></div><div class="media"><video class="moment" muted playsinline preload="metadata" poster="assets/video/clips/tracking.jpg" aria-label="A trip card building over a truck on a mountain road"><source src="assets/video/clips/tracking.mp4" type="video/mp4"></video></div></div>
-<div class="feature reveal"><div><div class="num">Dispatch and trip planning</div><h3>Assign the day <em>in one pass.</em></h3><p>A drag-and-drop calendar for planning a driver's week, with the same data in a list and on a map. The system checks linear footage before two loads share a trailer, pulls trucks from the right terminal, and keeps a record of every change.</p></div><div class="media"><video class="moment" muted playsinline preload="metadata" poster="assets/video/clips/dispatch.jpg" aria-label="Trips filling the dispatch calendar across the week"><source src="assets/video/clips/dispatch.mp4" type="video/mp4"></video></div></div>
-<div class="feature reveal"><div><div class="num">Quote to invoice</div><h3>From the quote <em>to the invoice.</em></h3><p>Set your rates ahead of time, by lane, weight and equipment, truckload or LTL. When a customer books or a broker asks, the load lands on your board already priced. The POD attaches to the load, the invoice comes out of the same record, and driver pay settles from it too.</p></div><div class="media"><video class="moment" muted playsinline preload="metadata" poster="assets/video/clips/rates.jpg" aria-label="The rate calculator pricing a load, truckload and LTL"><source src="assets/video/clips/rates.mp4" type="video/mp4"></video></div></div>
-<div class="feature reveal"><div><div class="num">Integrations and EDI</div><h3>The tools you already run, <em>connected.</em></h3><p>ELDs, telematics, mileage tools and your customers' EDI, connected from inside the platform with the help text right there. No systems admin. No vendor ticket.</p></div><div class="media"><video class="moment" muted playsinline preload="metadata" poster="assets/video/clips/integrations.jpg" aria-label="Telematics, mileage, load boards, EDI, insurance and accounting connecting to Carrier Companion"><source src="assets/video/clips/integrations.mp4" type="video/mp4"></video></div></div>
+<div class="feature ix-feature reveal"><div><div class="num">Dispatch and trip planning</div><h3>Assign the day <em>in one pass.</em></h3><p>A drag-and-drop calendar for planning a driver's week, with the same data in a list and on a map. The system checks linear footage before two loads share a trailer, pulls trucks from the right terminal, and keeps a record of every change.</p></div><div class="media"><div class="ix ix-dispatch" data-ix="dispatch">
+  <div class="ix-top"><span class="ix-tag">Try it</span><span class="ix-hint"><span class="fine">Drag a load onto a driver's day</span><span class="coarse">Tap a load, then a driver's day</span></span><button class="ix-reset" type="button">Reset</button></div>
+  <div class="dx-stage">
+    <div class="dx-tray" aria-label="Unassigned loads">
+      <span class="dx-label">Unassigned</span>
+      <div class="dx-load" tabindex="0" role="button" data-trip="4417" data-hazmat="0"><b>Memphis</b><span>Trip 4417 · Dry van</span></div>
+      <div class="dx-load" tabindex="0" role="button" data-trip="4421" data-hazmat="1"><b>Baton Rouge</b><span>Trip 4421 · <i class="hz">Hazmat</i></span></div>
+      <span class="dx-empty" hidden>All loads assigned.</span>
+    </div>
+    <div class="dx-board">
+      <div class="dx-head"><span>Driver</span><span>Mo 5</span><span>Tu 6</span><span>We 7</span></div>
+      <div class="dx-row" data-driver="Elena Cruz" data-hazmat="0"><div class="dx-driver"><b>Elena Cruz</b><span>General fleet</span></div><div class="dx-cell" tabindex="0" data-day="Monday"></div><div class="dx-cell" tabindex="0" data-day="Tuesday"><div class="dx-trip"><b>Tulsa</b><span>Trip 4409</span></div></div><div class="dx-cell" tabindex="0" data-day="Wednesday"></div></div>
+      <div class="dx-row" data-driver="Marcus Reed" data-hazmat="1"><div class="dx-driver"><b>Marcus Reed</b><span class="hz-badge">Hazmat endorsed</span></div><div class="dx-cell" tabindex="0" data-day="Monday"><div class="dx-trip"><b>Houston</b><span>Trip 4402</span></div></div><div class="dx-cell" tabindex="0" data-day="Tuesday"></div><div class="dx-cell" tabindex="0" data-day="Wednesday"></div></div>
+      <div class="dx-row" data-driver="Marwane Bidamou" data-hazmat="0"><div class="dx-driver"><b>Marwane Bidamou</b><span>General fleet</span></div><div class="dx-cell" tabindex="0" data-day="Monday"></div><div class="dx-cell" tabindex="0" data-day="Tuesday"></div><div class="dx-cell" tabindex="0" data-day="Wednesday"><div class="dx-trip"><b>Little Rock</b><span>Trip 4418</span></div></div></div>
+    </div>
+  </div>
+  <div class="ix-toast" role="status" aria-live="polite"></div>
+  <span class="ix-demo">Demo data</span>
+</div></div></div>
+<div class="feature ix-feature reveal"><div><div class="num">Quote to invoice</div><h3>From the quote <em>to the invoice.</em></h3><p>Set your rates ahead of time, by lane, weight and equipment, truckload or LTL. When a customer books or a broker asks, the load lands on your board already priced. The POD attaches to the load, the invoice comes out of the same record, and driver pay settles from it too.</p></div><div class="media"><div class="ix ix-pod" data-ix="pod">
+  <div class="ix-top"><span class="ix-tag">Try it</span><span class="ix-hint">Tap Mark delivered on the driver's phone</span><button class="ix-reset" type="button" hidden>Replay</button></div>
+  <div class="pd-stage">
+    <div class="pd-phone">
+      <div class="pd-screen"><span class="pd-notch" aria-hidden="true"></span>
+        <div class="pd-app-top"><b>Trip 4417</b><span class="pd-pill">At delivery</span></div>
+        <div class="pd-stop"><i></i><div><span>Arrival</span><b>Memphis, TN</b><em>Allen Foods Inc.</em></div></div>
+        <div class="pd-photo" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span>Signed POD</span></div>
+        <button class="pd-btn" type="button">Mark delivered</button>
+      </div>
+    </div>
+    <div class="pd-flow" aria-label="Load 8213">
+      <span class="dx-label">Load 8213 · on your board</span>
+      <div class="pd-step" data-wait="Waiting" data-done="Attached"><i class="pd-ico" aria-hidden="true"></i><div><b>Proof of Delivery</b><span>Attached to Trip 4417</span></div><em class="st">Waiting</em></div>
+      <div class="pd-step" data-wait="Waiting" data-done="$1,840.00 · Sent"><i class="pd-ico" aria-hidden="true"></i><div><b>Invoice 20417</b><span>Allen Foods Inc. · Net 30</span></div><em class="st">Waiting</em></div>
+      <div class="pd-step" data-wait="Waiting" data-done="$612.00 · Settled"><i class="pd-ico" aria-hidden="true"></i><div><b>Driver settlement</b><span>Marwane Bidamou · Trip 4417</span></div><em class="st">Waiting</em></div>
+    </div>
+  </div>
+  <span class="ix-demo">Demo data</span>
+</div></div></div>
+<div class="feature ix-feature reveal"><div><div class="num">Integrations and EDI</div><h3>The tools you already run, <em>connected.</em></h3><p>ELDs, telematics, mileage tools and your customers' EDI, connected from inside the platform with the help text right there. No systems admin. No vendor ticket.</p></div><div class="media"><div class="ix ix-hub" data-ix="hub">
+  <div class="ix-top"><span class="ix-tag">Try it</span><span class="ix-hint"><span class="fine">Click a tool to connect it</span><span class="coarse">Tap a tool to connect it</span></span><span class="hb-count">0 of 6 connected</span></div>
+  <div class="hb-stage">
+    <svg class="hb-lines" aria-hidden="true"></svg>
+    <button class="hb-tool" data-pos="tl" type="button" aria-pressed="false"><span class="hb-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 16a7 7 0 1 1 14 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 16l3.5-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><b>Telematics &amp; ELD</b><span class="hb-st">Available</span></button>
+    <button class="hb-tool" data-pos="tm" type="button" aria-pressed="false"><span class="hb-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 20s6-5.2 6-10a6 6 0 0 0-12 0c0 4.8 6 10 6 10z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="10" r="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span><b>Mileage &amp; Routing</b><span class="hb-st">Available</span></button>
+    <button class="hb-tool" data-pos="tr" type="button" aria-pressed="false"><span class="hb-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4 10h16M10 10v9" stroke="currentColor" stroke-width="1.6"/></svg></span><b>Load Boards &amp; DFM</b><span class="hb-st">Available</span></button>
+    <div class="hb-core"><img src="assets/mark.svg" alt="Carrier Companion" width="40" height="40"></div>
+    <button class="hb-tool" data-pos="bl" type="button" aria-pressed="false"><span class="hb-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 4l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span><b>Insurance</b><span class="hb-st">Available</span></button>
+    <button class="hb-tool" data-pos="bm" type="button" aria-pressed="false"><span class="hb-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M7 4h10v16l-2.5-1.5L12 20l-2.5-1.5L7 20z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9.5 9h5M9.5 12.5h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><b>Accounting</b><span class="hb-st">Available</span></button>
+    <button class="hb-tool" data-pos="br" type="button" aria-pressed="false"><span class="hb-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 9h12l-3-3M19 15H7l3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b>EDI</b><span class="hb-st">Available</span></button>
+  </div>
+  <span class="ix-demo">Demo data</span>
+</div></div></div>
 <div class="feature reveal"><div><div class="num">Driver app</div><h3>One app <em>in the cab.</em></h3><p>Trips show up on the driver's phone. Pickups, deliveries, photos and signed PODs flow back to your board and attach to the load as invoice backup.</p></div><div class="media"><video class="moment" muted playsinline preload="metadata" poster="assets/video/clips/driver-app.jpg" aria-label="A trip card appearing beside the driver app in the cab"><source src="assets/video/clips/driver-app.mp4" type="video/mp4"></video></div></div>
 <div class="feature reveal"><div><div class="num">Roles and guardrails</div><h3>Guardrails, <em>built in.</em></h3><p>Custom roles from granular permissions. Credentials and endorsements that block a bad assignment before it happens. An audit trail behind every change.</p></div><div class="media"><img class="pic" src="assets/img/gen/guardrails.jpg" alt="A navy truck with a glass trailer driving between frosted glass guardrails" loading="lazy" style="aspect-ratio:16/9"></div></div>
 <div class="feature reveal"><div><div class="num">Pricing</div><h3>Priced by the trip, <em>not by the seat.</em></h3><p>Add a dispatcher, add a planner, add the office manager. The price follows the loads you run, not the people who log in.</p></div><div class="media"><img class="pic" src="assets/img/gen/priced-by-trip.jpg" alt="A navy truck on a glowing route beside a row of empty office chairs" loading="lazy" style="aspect-ratio:16/9"></div></div>
@@ -101,5 +152,6 @@
   </div>
 </footer>
 <script src="js/site.js?v=20261020c"></script>
+<script src="js/interactions.js?v=20261020j"></script>
 </body>
 </html>
