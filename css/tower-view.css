@@ -1,5 +1,5 @@
-/* Tower View prototype · Carrier Companion */
-.tv-hero{position:relative;height:calc(100vh - 72px);min-height:640px;overflow:hidden;overflow:clip;background:#EEF2F6} /* clip: off-screen dots/card can never scroll the hero */
+/* Tower View · Carrier Companion homepage hero */
+.tv-hero{position:relative;height:calc(100vh - 72px);min-height:640px;max-height:1000px;overflow:hidden;overflow:clip;background:#EEF2F6} /* clip: off-screen dots/card can never scroll the hero */
 .tv-stage{position:absolute;inset:0;overflow:hidden;overflow:clip}
 .tv-stage canvas{display:block;width:100%;height:100%;outline:none;cursor:grab}
 .tv-stage canvas.drag{cursor:grabbing}

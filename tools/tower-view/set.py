@@ -4,6 +4,7 @@
 # into a lightmap atlas for the set. Layout uses three.js coordinates (x, z);
 # Blender position = (x, -z, y).
 # Usage: Blender -b --factory-startup -P set.py -- <out_dir> [samples]
+#   e.g. -- assets/3d 256   (out_dir must already contain trucks.glb from trucks.py)
 import bpy, bmesh, math, sys, os
 import numpy as np
 
@@ -283,7 +284,7 @@ fence([(-10, -6), (-10, -14), (10, -14), (10, -6)])
 grove(-14, -12, 5); grove(18, -13, 4, 1); grove(-6, 4, 3, 2); grove(27, 2, 4, 3)
 
 # trailers backed into docks 2 and 5, using the dry van from trucks.glb
-bpy.ops.import_scene.gltf(filepath=os.path.join(HERE, 'trucks.glb'))
+bpy.ops.import_scene.gltf(filepath=os.path.join(OUT, 'trucks.glb'))   # build trucks.py into the same folder first
 lib = {o.name: o for o in bpy.context.selected_objects}
 van = [o for o in lib.values() if o.parent and o.parent.name.startswith('Trailer') and not o.parent.name.startswith('TrailerGlass')]
 pitch = (14 - 2.8) / 5
