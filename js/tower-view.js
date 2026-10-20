@@ -1,4 +1,4 @@
-/* Tower View prototype · Carrier Companion
+/* Tower View · Carrier Companion homepage hero
    A live model-world scene: porcelain trucks on glowing routes, click to track. Demo data only. */
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -36,7 +36,7 @@ renderer.toneMappingExposure = 0.95;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap; // VSM speckled on some GPUs
 
-// models are Draco-compressed (see models/*.py); one loader shared by trucks and set
+// models are Draco-compressed (see tools/tower-view/*.py); one loader shared by trucks and set
 const gltfLoader = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/'));
 
 const scene = new THREE.Scene();
@@ -182,7 +182,7 @@ function buildTrailer(navy) {
 
 // ---------- routes ----------
 // Road: rounded rectangle, centre x ±20, z -1.5..9.5, corner radius 4, 2.6 wide.
-// Trucks keep to the right-hand lane, 0.65 inside the centre line (mirrors models/set.py).
+// Trucks keep to the right-hand lane, 0.65 inside the centre line (mirrors tools/tower-view/set.py).
 function roundedRect(x0, x1, z0, z1, r, step = 0.5) {
   const pts = [], line = (ax, az, bx, bz) => { const n = Math.max(1, Math.round(Math.hypot(bx - ax, bz - az) / step)); for (let i = 0; i < n; i++) pts.push([ax + (bx - ax) * i / n, az + (bz - az) * i / n]); };
   const arc = (cx, cz, a0) => { const n = Math.round(r * Math.PI / 2 / step); for (let i = 0; i < n; i++) { const a = a0 + (Math.PI / 2) * i / n; pts.push([cx + r * Math.cos(a), cz + r * Math.sin(a)]); } };
@@ -313,16 +313,16 @@ function buildProceduralSet() {
   grove(-14, -12, 5); grove(18, -13, 4, 1); grove(-6, 4, 3, 2); grove(27, 2, 4, 3);
 }
 
-// baked set: geometry + AO atlas + ground shadow texture, built by models/set.py
+// baked set: geometry + AO atlas + ground shadow texture, built by tools/tower-view/set.py
 const texLoader = new THREE.TextureLoader();
 function loadTex(name, flipY) {
-  const t = texLoader.load(new URL('models/' + name, import.meta.url).href);
+  const t = texLoader.load(new URL('../assets/3d/' + name, import.meta.url).href);
   t.flipY = flipY; t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; return t;
 }
-gltfLoader.load(new URL('models/set.glb', import.meta.url).href, (gltf) => {
+gltfLoader.load(new URL('../assets/3d/set.glb', import.meta.url).href, (gltf) => {
   // show the set only once its baked light is in, otherwise it flashes black on slow connections
   gltf.scene.visible = false;
-  const light = texLoader.load(new URL('models/set-light.jpg', import.meta.url).href, () => { gltf.scene.visible = true; });
+  const light = texLoader.load(new URL('../assets/3d/set-light.jpg', import.meta.url).href, () => { gltf.scene.visible = true; });
   light.flipY = false; light.colorSpace = THREE.NoColorSpace; light.anisotropy = 4;   // sun + sky + bounce, normalised (open ground = 1), stored at 1/1.5
   const baked = (hex) => new THREE.MeshBasicMaterial({ color: hex, lightMap: light, lightMapIntensity: Math.PI * 1.5, toneMapped: false });
   const map = { Porcelain: baked(0xEEF1F5), Shade: baked(0xDDE3EA), Window: baked(0xAEBFD1), Dock: baked(0xD5DCE4), DockGlow: M.dockGlow,
@@ -336,7 +336,7 @@ gltfLoader.load(new URL('models/set.glb', import.meta.url).href, (gltf) => {
     m.castShadow = false; m.receiveShadow = true;
   });
   scene.add(gltf.scene);
-  texLoader.load(new URL('models/ground-shadow.jpg', import.meta.url).href, (t) => {
+  texLoader.load(new URL('../assets/3d/ground-shadow.jpg', import.meta.url).href, (t) => {
     t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; groundShadow.value = t;
     ground.material = groundShaded;
   });
@@ -350,7 +350,7 @@ const FLEET = [
   { name: 'Asset 2', trip: 4418, driver: 'K. Nguyen', from: 'Evanston, WY', to: 'Rawlins, WY', route: 0, u: 0.05 },
   { name: 'Asset 1', trip: 4419, driver: 'D. Brooks', from: 'Dallas, TX', to: 'Tulsa, OK', route: 0, u: 0.3 }
 ];
-// geometry constants match prototype/models/trucks.glb (built by models/trucks.py)
+// geometry constants match assets/3d/trucks.glb (built by tools/tower-view/trucks.py)
 const KINGPIN = 0.98, TRAILER_AXLE = KINGPIN + 2.8, SPEED = 3.2; // world units / s
 
 const STATUS_COL = { transit: '#22C55E', delivered: '#6ED6FF', idle: '#F9AC24', late: '#D22533' };
@@ -401,7 +401,7 @@ function skin(src, navy) {
   });
   return g;
 }
-gltfLoader.load(new URL('models/trucks.glb', import.meta.url).href, (gltf) => {
+gltfLoader.load(new URL('../assets/3d/trucks.glb', import.meta.url).href, (gltf) => {
   const lib = {}; gltf.scene.children.forEach(c => { lib[c.name] = c; });
   if (!lib.Tractor || !lib.Trailer || !lib.TrailerGlass) return;
   trucks.forEach(t => {

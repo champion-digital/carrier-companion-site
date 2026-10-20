@@ -2,91 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tower View prototype - Carrier Companion</title>
 <meta name="robots" content="noindex">
-<link rel="icon" href="../assets/mark.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,600;1,700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../css/site.css">
-<link rel="stylesheet" href="tower-view.css">
-<script type="importmap">
-{ "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
-} }
-</script>
+<title>Carrier Companion</title>
+<meta http-equiv="refresh" content="0; url=../">
+<link rel="canonical" href="../">
 </head>
-<body>
-<header class="nav">
-  <div class="container nav-inner">
-    <a class="brand" href="../" aria-label="Carrier Companion home"><img src="../assets/logo-light.svg" alt="Carrier Companion"></a>
-    <nav class="nav-links" aria-label="Primary">
-      <a href="../product">Product</a>
-      <a href="../built-for-fleets">Built for fleets</a>
-      <a href="../switch">Making the switch</a>
-      <a href="../about">About</a>
-    </nav>
-    <div class="nav-cta">
-      <a class="btn btn-primary" href="../demo">Request a demo</a>
-    </div>
-  </div>
-</header>
-
-<main>
-  <section class="tv-hero" id="tv-hero">
-    <div class="tv-stage" id="tv-stage" aria-hidden="true">
-      <canvas id="tv-canvas"></canvas>
-      <div class="tv-fallback" id="tv-fallback" hidden><img src="../assets/img/mw-route.jpg" alt=""></div>
-    </div>
-
-    <div class="tv-copy">
-      <div class="container">
-        <h1>A seat <em>above the noise.</em></h1>
-        <p class="lede">Every truck on one map. Every load on one board. Carrier Companion is the view from above the dispatch floor, where you can see the whole day before it comes to you.</p>
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="../demo">Request a demo <span class="arrow">→</span></a>
-        </div>
-      </div>
-    </div>
-
-    <aside class="tv-assets" id="tv-assets" aria-label="Active assets">
-      <div class="tv-assets-head"><b>Active Assets</b><span id="tv-online">6 assets online</span></div>
-      <ul id="tv-asset-list"></ul>
-    </aside>
-
-    <div class="tv-card" id="tv-card" hidden role="dialog" aria-live="polite">
-      <button class="tv-close" id="tv-close" aria-label="Close">×</button>
-      <div class="tv-card-head"><span class="tv-asset" id="c-asset"></span><span class="tv-pill" id="c-pill"></span></div>
-      <div class="tv-trip" id="c-trip"></div>
-      <div class="tv-route">
-        <div class="tv-stop"><i></i><span id="c-from"></span></div>
-        <div class="tv-bar"><span id="c-bar"></span></div>
-        <div class="tv-stop end"><i></i><span id="c-to"></span></div>
-      </div>
-      <dl class="tv-grid">
-        <div><dt>ETA</dt><dd id="c-eta"></dd></div>
-        <div><dt>Driver</dt><dd id="c-driver"></dd></div>
-        <div><dt>Remaining</dt><dd id="c-rem"></dd></div>
-        <div><dt>Avg speed</dt><dd id="c-speed"></dd></div>
-      </dl>
-      <div class="tv-note" id="c-note"></div>
-    </div>
-
-    <div class="tv-hint" id="tv-hint" aria-hidden="true">
-      <span class="tv-hint-item" data-hint="track">
-        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 3.5l12.5 6.2-5.6 1.6-2.1 5.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12.9 11.3l5.2 5.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-        <span id="tv-hint-track">Click a truck or asset to track it</span>
-      </span>
-      <span class="tv-hint-item" data-hint="rotate">
-        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M19.6 3.8v4.1h-4.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>Drag to rotate the view</span>
-      </span>
-    </div>
-    <div class="tv-demo">Demo data</div>
-  </section>
-</main>
-
-<script type="module" src="tower-view.js"></script>
-</body>
+<body><p>Tower View now lives on the <a href="../">Carrier Companion homepage</a>.</p></body>
 </html>

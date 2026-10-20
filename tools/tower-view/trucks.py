@@ -2,6 +2,7 @@
 # Builds a long-nose conventional tractor, a dry van and a glass trailer.
 # Blender: X forward, Y across, Z up. Exported glTF is Y-up, forward +X.
 # Usage: Blender -b --factory-startup -P trucks.py -- <out.glb> [preview.png]
+#   e.g. -- assets/3d/trucks.glb
 import bpy, bmesh, math, sys
 
 argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
