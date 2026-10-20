@@ -8,8 +8,8 @@
 <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,600;1,700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/site.css">
-<link rel="stylesheet" href="css/tower-view.css">
+<link rel="stylesheet" href="css/site.css?v=20261020c">
+<link rel="stylesheet" href="css/tower-view.css?v=20261020c">
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -95,7 +95,7 @@
       <p class="lede" style="margin-top:24px">Most fleets run on a whiteboard, a handful of spreadsheets, a shared calendar and whatever the ops manager keeps in their head. Some run all of that on top of a system that was supposed to replace it. It works, as long as the one person who knows it all is at their desk. Carrier Companion puts the map, the board, the loads and trips, the drivers and equipment, the customers, documents, rates and invoices in one place.</p>
       <p class="lede" style="color:var(--ink);font-weight:500">Fewer tabs. Fewer spreadsheets. Fewer things only one person knows.</p>
     </div>
-    <div class="media"><img class="pic" src="assets/img/film/dispatcher-dawn.jpg" alt="The dispatcher at her desk at dawn, the yard lit up behind the window" loading="lazy" style="aspect-ratio:16/10"></div>
+    <div class="media"><img class="pic" src="assets/img/film/desk-overhead.jpg" alt="From above: the dispatcher's desk covered in printouts and sticky notes, phone beside the keyboard" loading="lazy" style="aspect-ratio:16/9"></div>
   </div>
 </section>
 
@@ -107,7 +107,7 @@
     </div>
     <div class="cards reveal">
       <article class="card visual span-2">
-        <div class="shot"><img src="assets/img/film/board-calendar.jpg" alt="The Carrier Companion dispatch board with trips planned across the week" loading="lazy" style="display:block;width:100%;aspect-ratio:16/7;object-fit:cover;object-position:top"></div>
+        <div class="shot"><img src="assets/img/film/calendar-panel.jpg" alt="The Carrier Companion dispatch board: drivers down the side, trips across the week" loading="lazy"></div>
         <div class="body"><h3>Dispatch and trip planning</h3><p>Assign the day in one pass. Loads into trips, trips to drivers, planned once on one board with a record of every change.</p></div>
       </article>
       <article class="card"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></div><h3>Live tracking</h3><p>Know before it's asked. Where's the truck, when it delivers, whether the POD came in. The answer is on the screen when the customer calls, so the call is short.</p></article>
@@ -130,7 +130,10 @@
       <div class="tick"><div class="t">3:20 p.m.</div><p>Asset 5 delivers. <b>The POD is on the load before anyone asks you for it.</b> The invoice goes out behind it.</p></div>
       <div class="tick"><div class="t">4:40 p.m.</div><p>You lean back. <b>The whiteboard is empty.</b></p></div>
     </div>
-    <div class="media reveal" style="margin-top:56px"><video class="film" controls preload="none" playsinline poster="assets/video/carrier-companion-film-poster.jpg" aria-label="Carrier Companion brand film"><source src="assets/video/carrier-companion-film.mp4" type="video/mp4"></video></div>
+    <div class="media reveal" style="margin-top:56px"><div class="theater" data-theater>
+      <video class="film" preload="none" playsinline poster="assets/video/carrier-companion-film-poster.jpg" aria-label="Carrier Companion brand film"><source src="assets/video/carrier-companion-film.mp4" type="video/mp4"></video>
+      <button class="theater-play" type="button" aria-label="Play the film"><span class="tp-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg></span><span class="tp-label">Watch the film <i>1:13</i></span></button>
+    </div></div>
   </div>
 </section>
 
@@ -141,7 +144,7 @@
       <p class="lede" style="margin-top:24px">Many platforms try to run a brokerage and a fleet in one product. Carrier Companion does one job: the asset side. If you run a brokerage too, it's natively integrated with BrokerWare, built by the same team, so each side of the business keeps its own platform and loads move between them where they need to.</p>
       <p><a class="link" href="built-for-fleets">Why it was built separately <span class="arrow">→</span></a></p>
     </div>
-    <div class="media"><img class="pic" src="assets/img/film/bridge.jpg" alt="A white semi truck crossing a steel bridge in morning light" loading="lazy" style="aspect-ratio:16/10"></div>
+    <div class="media"><img class="pic" src="assets/img/film/bridge.jpg" alt="A white semi truck crossing a steel bridge in morning light" loading="lazy" style="aspect-ratio:16/9"></div>
   </div>
 </section>
 
@@ -152,7 +155,7 @@
       <p class="lede" style="margin-top:24px">From the team behind BrokerWare. For twenty years they've built transportation software for freight brokers. Their customers who also run trucks kept asking for a version built for the asset side. Carrier Companion is what they built, and those customers helped shape it.</p>
       <p style="margin-top:28px"><a class="link" href="about">About the team <span class="arrow">→</span></a></p>
     </div>
-    <div class="media"><img class="pic" src="assets/img/film/asset-eta.jpg" alt="A navy truck on a glowing route with its live ETA card" loading="lazy" style="aspect-ratio:16/10"></div>
+    <div class="media"><img class="pic" src="assets/img/film/asset-eta.jpg" alt="A navy truck on a glowing route with its live ETA card" loading="lazy" style="aspect-ratio:16/9"></div>
   </div>
 </section>
 
@@ -163,16 +166,19 @@
       <p class="lede" style="margin-top:24px">Maybe the fleet runs on a whiteboard and a spreadsheet. Maybe it runs on a system that has been in the office longer than most of the drivers. Either way, what you do today has worked up to this point, and switching over to Carrier Companion is the part that has to go right. So it's the part we take most seriously. A small team that answers quickly, with no layers of approval in the way. A platform you set up yourself, in the interface, not through a vendor ticket. Your customers, drivers, equipment and rates carried over, with an audit trail behind everything from day one.</p>
       <p><a class="link" href="switch">How the switch works <span class="arrow">→</span></a></p>
     </div>
-    <div class="media"><img class="pic" src="assets/img/film/desk-wide.jpg" alt="The dispatch office at dawn, desk lamp on, yard outside the window" loading="lazy" style="aspect-ratio:16/10"></div>
+    <div class="media"><img class="pic" src="assets/img/film/desk-wide.jpg" alt="The dispatch office at dawn, desk lamp on, yard outside the window" loading="lazy" style="aspect-ratio:16/9"></div>
   </div>
 </section>
 
-<section class="band dark">
-  <div class="container reveal">
+<section class="cta">
+  <video class="cta-bg" autoplay muted loop playsinline preload="metadata" poster="assets/video/cta-loop.jpg" aria-hidden="true"><source src="assets/video/cta-loop.mp4" type="video/mp4"></video>
+  <div class="container cta-inner reveal">
     <h2>See the whole day <em>before it comes to you.</em></h2>
     <p class="lede">Come up and see. Thirty minutes. Your lanes on the screen.</p>
-    <a class="btn btn-sky" href="demo">Request a demo <span class="arrow">→</span></a>
-    <div class="hallmark">From the team behind <b>BrokerWare</b>.</div>
+    <div class="cta-actions">
+      <a class="btn btn-sky btn-lg" href="demo">Request a demo <span class="arrow">→</span></a>
+    </div>
+      <div class="hallmark">From the team behind <b>BrokerWare</b>.</div>
   </div>
 </section>
 
@@ -208,7 +214,7 @@
         <ul><li><a href="about">About</a></li><li><a href="demo">Request a demo</a></li></ul>
       </div>
       <div>
-        <ul><li>[email]</li><li>[phone]</li><li>[address]</li></ul>
+        <ul><li><a href="tel:+18009658205">+1 (800) 965-8205</a></li><li>12831 Newport Ave, Suite 300<br>Tustin, CA 92780</li></ul>
       </div>
     </div>
     <div class="footer-bottom">
@@ -217,7 +223,7 @@
     </div>
   </div>
 </footer>
-<script type="module" src="js/tower-view.js"></script>
-<script src="js/site.js"></script>
+<script type="module" src="js/tower-view.js?v=20261020c"></script>
+<script src="js/site.js?v=20261020c"></script>
 </body>
 </html>
