@@ -296,8 +296,8 @@ p,.lede,.faq .a,figcaption,li{text-wrap:pretty}
 .feature:nth-child(even){grid-template-columns:1.2fr 1fr}
 @media (max-width:900px){.feature,.feature:nth-child(even){grid-template-columns:1fr}}
 .feature .media img,.feature .media video{aspect-ratio:16/9}
-.card.visual .shot{max-height:none;padding:32px 32px 0;background:linear-gradient(180deg,var(--ice),#eef8ff)}
-.card.visual .shot img{width:100%;height:auto}
+.card.visual .shot{max-height:none;padding:32px;background:linear-gradient(180deg,var(--ice),#eef8ff)}
+.card.visual .shot img{width:100%;height:auto;display:block;border-radius:12px;box-shadow:0 0 0 1px rgba(11,27,51,.06),0 18px 36px -18px rgba(11,27,51,.35)}
 .panel{min-height:0}
 .panel .art{flex:none;aspect-ratio:16/9;min-height:0}
 
