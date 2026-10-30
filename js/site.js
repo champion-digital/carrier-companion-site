@@ -48,7 +48,27 @@
   const faqs=document.querySelectorAll('.faq details');
   faqs.forEach(d=>d.addEventListener('toggle',()=>{if(d.open)faqs.forEach(o=>{if(o!==d)o.open=false;});}));
 
-  // Demo form (front-end only; wire to HubSpot form endpoint when ready)
+  // Demo form: posts to the Apps Script web app in apps-script/Code.gs, which appends a row to the Google Sheet.
+  const DEMO_ENDPOINT='';
   const form=document.querySelector('#demo-form');
-  if(form){form.addEventListener('submit',(e)=>{e.preventDefault();form.style.display='none';document.querySelector('#form-done').classList.add('show');window.scrollTo({top:form.getBoundingClientRect().top+window.scrollY-120,behavior:'smooth'});});}
+  if(form){
+    const note=document.querySelector('#form-note'),btn=form.querySelector('button[type=submit]'),label=btn.innerHTML;
+    form.addEventListener('submit',async(e)=>{
+      e.preventDefault();
+      note.className='form-note';note.textContent='';
+      if(!form.reportValidity())return;
+      if(!DEMO_ENDPOINT){note.className='form-note error';note.textContent='The form is not connected yet. Call us at +1 (888) 232-0075.';return;}
+      const data=new URLSearchParams(new FormData(form));
+      data.set('page_url',location.href);
+      btn.disabled=true;btn.textContent='Sending...';
+      try{
+        // Apps Script doesn't send CORS headers, so the response can't be read; a network error still throws.
+        await fetch(DEMO_ENDPOINT,{method:'POST',mode:'no-cors',body:data});
+        form.style.display='none';document.querySelector('#form-done').classList.add('show');
+        window.scrollTo({top:form.getBoundingClientRect().top+window.scrollY-120,behavior:'smooth'});
+      }catch(err){
+        note.className='form-note error';note.textContent='Something went wrong. Please try again, or call +1 (888) 232-0075.';
+      }finally{btn.disabled=false;btn.innerHTML=label;}
+    });
+  }
 })();
