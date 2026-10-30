@@ -49,7 +49,7 @@
   faqs.forEach(d=>d.addEventListener('toggle',()=>{if(d.open)faqs.forEach(o=>{if(o!==d)o.open=false;});}));
 
   // Demo form: posts to the Apps Script web app in apps-script/Code.gs, which appends a row to the Google Sheet.
-  const DEMO_ENDPOINT='';
+  const DEMO_ENDPOINT='https://script.google.com/macros/s/AKfycbznA8wKOBDLbvBivKrHePs2FZXgk_Td4IWDMkSDfTb3cETZ-nmgoMwTafND3hq3ihMg_Q/exec';
   const form=document.querySelector('#demo-form');
   if(form){
     const note=document.querySelector('#form-note'),btn=form.querySelector('button[type=submit]'),label=btn.innerHTML;
